@@ -1,0 +1,445 @@
+{
+  "dashboard": {
+    "pendingTasks": 8,
+    "documentsInReview": 14,
+    "approvedThisMonth": 21,
+    "expiredSoon": 3
+  },
+  "platformAdmins": [
+    {
+      "id": "pa_001",
+      "name": "Administrador da Plataforma",
+      "email": "admin@plataforma.local",
+      "password": "Admin@123",
+      "isActive": true
+    }
+  ],
+  "tenants": [
+    {
+      "id": "ten_001",
+      "name": "Empresa Demo",
+      "slug": "demo",
+      "isActive": true
+    }
+  ],
+  "tenantModules": [
+    {
+      "id": "tm_001",
+      "tenantId": "ten_001",
+      "code": "dashboard",
+      "name": "Dashboard",
+      "isEnabled": true
+    },
+    {
+      "id": "tm_002",
+      "tenantId": "ten_001",
+      "code": "users",
+      "name": "Usuários",
+      "isEnabled": true
+    },
+    {
+      "id": "tm_003",
+      "tenantId": "ten_001",
+      "code": "metadata",
+      "name": "Metadados",
+      "isEnabled": true
+    },
+    {
+      "id": "tm_004",
+      "tenantId": "ten_001",
+      "code": "documents",
+      "name": "Documentos",
+      "isEnabled": true
+    },
+    {
+      "id": "tm_005",
+      "tenantId": "ten_001",
+      "code": "workflows",
+      "name": "Workflows",
+      "isEnabled": true
+    },
+    {
+      "id": "tm_006",
+      "tenantId": "ten_001",
+      "code": "settings",
+      "name": "Configurações",
+      "isEnabled": true
+    }
+  ],
+  "units": [
+    {
+      "id": "uni_001",
+      "tenantId": "ten_001",
+      "code": "MATRIZ",
+      "name": "Matriz",
+      "description": "Unidade principal",
+      "isActive": true
+    }
+  ],
+  "areas": [
+    {
+      "id": "are_001",
+      "tenantId": "ten_001",
+      "unitId": "uni_001",
+      "code": "ADM",
+      "name": "Administração",
+      "description": "Área administrativa",
+      "isActive": true
+    },
+    {
+      "id": "are_002",
+      "tenantId": "ten_001",
+      "unitId": "uni_001",
+      "code": "GDO",
+      "name": "Gestão Documental",
+      "description": "Área de gestão documental",
+      "isActive": true
+    }
+  ],
+  "positions": [
+    {
+      "id": "pos_001",
+      "tenantId": "ten_001",
+      "unitId": "uni_001",
+      "areaId": "are_001",
+      "code": "ADMIN",
+      "name": "Administrador do Tenant",
+      "description": "Responsável geral pelo tenant",
+      "isActive": true
+    },
+    {
+      "id": "pos_002",
+      "tenantId": "ten_001",
+      "unitId": "uni_001",
+      "areaId": "are_002",
+      "code": "GESTOR",
+      "name": "Gestor de Processo",
+      "description": "Responsável por fluxos e processos",
+      "isActive": true
+    },
+    {
+      "id": "pos_003",
+      "tenantId": "ten_001",
+      "unitId": "uni_001",
+      "areaId": "are_001",
+      "code": "REVISOR",
+      "name": "Revisor",
+      "description": "Responsável por revisar documentos",
+      "isActive": true
+    }
+  ],
+  "users": [
+    {
+      "id": "usr_001",
+      "tenantId": "ten_001",
+      "name": "Administrador Demo",
+      "email": "admin@demo.local",
+      "password": "Admin@123",
+      "role": "tenant_admin",
+      "status": "active",
+      "cpf": "11111111111",
+      "phone": "51999990001",
+      "photoUrl": "",
+      "department": "Administração",
+      "jobTitle": "Administrador",
+      "position": "Administrador do Tenant",
+      "positionId": "pos_001",
+      "unitId": "uni_001",
+      "areaId": "are_001",
+      "isActive": true,
+      "notes": "Usuário administrador de demonstração."
+    },
+    {
+      "id": "usr_002",
+      "tenantId": "ten_001",
+      "name": "Gestor Demo",
+      "email": "gestor@demo.local",
+      "password": "Admin@123",
+      "role": "manager",
+      "status": "active",
+      "cpf": "22222222222",
+      "phone": "51999990002",
+      "photoUrl": "",
+      "department": "Gestão Documental",
+      "jobTitle": "Gestor",
+      "position": "Gestor de Processo",
+      "positionId": "pos_002",
+      "unitId": "uni_001",
+      "areaId": "are_002",
+      "isActive": true,
+      "notes": "Usuário gestor de demonstração."
+    },
+    {
+      "id": "usr_003",
+      "tenantId": "ten_001",
+      "name": "Douglas Martins",
+      "email": "douglas@empresa.com",
+      "password": "Admin@123",
+      "role": "tenant_admin",
+      "status": "active",
+      "cpf": "33333333333",
+      "phone": "51999990003",
+      "photoUrl": "",
+      "department": "Administração",
+      "jobTitle": "Coordenador",
+      "position": "Administrador do Tenant",
+      "positionId": "pos_001",
+      "unitId": "uni_001",
+      "areaId": "are_001",
+      "isActive": true,
+      "notes": "Usuário adicional para testes."
+    },
+    {
+      "id": "usr_004",
+      "tenantId": "ten_001",
+      "name": "Mariana Lima",
+      "email": "mariana@empresa.com",
+      "password": "Admin@123",
+      "role": "reviewer",
+      "status": "active",
+      "cpf": "44444444444",
+      "phone": "51999990004",
+      "photoUrl": "",
+      "department": "Gestão Documental",
+      "jobTitle": "Analista",
+      "position": "Revisor",
+      "positionId": "pos_003",
+      "unitId": "uni_001",
+      "areaId": "are_002",
+      "isActive": true,
+      "notes": "Usuária revisora para testes."
+    }
+  ],
+  "metadataSets": [
+    {
+      "id": "set_001",
+      "code": "IDENTIFICACAO",
+      "name": "Identificação",
+      "description": "Dados principais do documento",
+      "sortOrder": 1,
+      "isActive": true
+    },
+    {
+      "id": "set_002",
+      "code": "CONTROLE",
+      "name": "Controle",
+      "description": "Dados de prazo e controle",
+      "sortOrder": 2,
+      "isActive": true
+    },
+    {
+      "id": "set_003",
+      "code": "FINANCEIRO",
+      "name": "Financeiro",
+      "description": "Campos financeiros e parcelamento",
+      "sortOrder": 3,
+      "isActive": true
+    }
+  ],
+  "metadataOptionSets": [
+    {
+      "id": "optset_001",
+      "code": "DISCIPLINA",
+      "name": "Disciplina",
+      "valueMode": "sigla_label",
+      "allowMultiSelect": false,
+      "isActive": true
+    },
+    {
+      "id": "optset_002",
+      "code": "PRIORIDADE",
+      "name": "Prioridade",
+      "valueMode": "value_label",
+      "allowMultiSelect": false,
+      "isActive": true
+    }
+  ],
+  "metadataOptions": [
+    {
+      "id": "opt_001",
+      "optionSetId": "optset_001",
+      "code": "OA",
+      "value": "OA",
+      "label": "Operação Assistida",
+      "sortOrder": 1,
+      "isActive": true
+    },
+    {
+      "id": "opt_002",
+      "optionSetId": "optset_001",
+      "code": "CA",
+      "value": "CA",
+      "label": "Civil",
+      "sortOrder": 2,
+      "isActive": true
+    },
+    {
+      "id": "opt_003",
+      "optionSetId": "optset_001",
+      "code": "AI",
+      "value": "AI",
+      "label": "Automação",
+      "sortOrder": 3,
+      "isActive": true
+    },
+    {
+      "id": "opt_004",
+      "optionSetId": "optset_002",
+      "code": null,
+      "value": "baixa",
+      "label": "Baixa",
+      "sortOrder": 1,
+      "isActive": true
+    },
+    {
+      "id": "opt_005",
+      "optionSetId": "optset_002",
+      "code": null,
+      "value": "media",
+      "label": "Média",
+      "sortOrder": 2,
+      "isActive": true
+    },
+    {
+      "id": "opt_006",
+      "optionSetId": "optset_002",
+      "code": null,
+      "value": "alta",
+      "label": "Alta",
+      "sortOrder": 3,
+      "isActive": true
+    }
+  ],
+  "metadataDefinitions": [
+    {
+      "id": "meta_001",
+      "metadataSetId": "set_001",
+      "code": "titulo",
+      "label": "Título",
+      "fieldType": "string",
+      "optionSetId": null,
+      "isRequired": true,
+      "isReadOnly": false,
+      "sortOrder": 1,
+      "isActive": true
+    },
+    {
+      "id": "meta_002",
+      "metadataSetId": "set_001",
+      "code": "disciplina",
+      "label": "Disciplina",
+      "fieldType": "lista_com_sigla",
+      "optionSetId": "optset_001",
+      "isRequired": true,
+      "isReadOnly": false,
+      "sortOrder": 2,
+      "isActive": true
+    },
+    {
+      "id": "meta_003",
+      "metadataSetId": "set_002",
+      "code": "data_emissao",
+      "label": "Data de Emissão",
+      "fieldType": "data",
+      "optionSetId": null,
+      "isRequired": true,
+      "isReadOnly": false,
+      "sortOrder": 1,
+      "isActive": true
+    },
+    {
+      "id": "meta_004",
+      "metadataSetId": "set_002",
+      "code": "prioridade",
+      "label": "Prioridade",
+      "fieldType": "lista",
+      "optionSetId": "optset_002",
+      "isRequired": false,
+      "isReadOnly": false,
+      "sortOrder": 2,
+      "isActive": true
+    },
+    {
+      "id": "meta_005",
+      "metadataSetId": "set_003",
+      "code": "valor_total",
+      "label": "Valor Total",
+      "fieldType": "moeda",
+      "optionSetId": null,
+      "isRequired": false,
+      "isReadOnly": false,
+      "sortOrder": 1,
+      "isActive": true
+    },
+    {
+      "id": "meta_006",
+      "metadataSetId": "set_003",
+      "code": "parcelamento",
+      "label": "Parcelamento",
+      "fieldType": "tabela_parcelamento",
+      "optionSetId": null,
+      "isRequired": false,
+      "isReadOnly": false,
+      "sortOrder": 2,
+      "isActive": true
+    }
+  ],
+  "documentTypes": [
+    {
+      "id": "doctype_001",
+      "code": "CONTRATO",
+      "name": "Contrato",
+      "description": "Documentos de contrato",
+      "defaultWorkflowId": "wf_001",
+      "isActive": true
+    },
+    {
+      "id": "doctype_002",
+      "code": "PROCEDIMENTO",
+      "name": "Procedimento",
+      "description": "Procedimentos internos",
+      "defaultWorkflowId": "wf_002",
+      "isActive": true
+    }
+  ],
+  "workflows": [
+    {
+      "id": "wf_001",
+      "code": "WF_CONTRATO",
+      "name": "Fluxo de Contrato",
+      "version": 1,
+      "isActive": true
+    },
+    {
+      "id": "wf_002",
+      "code": "WF_PROCEDIMENTO",
+      "name": "Fluxo de Procedimento",
+      "version": 1,
+      "isActive": true
+    }
+  ],
+  "documents": [
+    {
+      "id": "doc_001",
+      "documentTypeId": "doctype_001",
+      "workflowId": "wf_001",
+      "documentNumber": "CTR-2026-0001",
+      "title": "Contrato de Prestação de Serviço",
+      "status": "in_review",
+      "revision": "00",
+      "ownerUserId": "usr_001",
+      "createdAt": "2026-03-17T10:00:00Z"
+    },
+    {
+      "id": "doc_002",
+      "documentTypeId": "doctype_002",
+      "workflowId": "wf_002",
+      "documentNumber": "PRC-2026-0001",
+      "title": "Procedimento de Aprovação",
+      "status": "approved",
+      "revision": "01",
+      "ownerUserId": "usr_002",
+      "createdAt": "2026-03-16T14:30:00Z"
+    }
+  ]
+}
