@@ -1,4 +1,4 @@
-import { mockApi } from './mockApi'
+import { api } from './client'
 
 export type UserItem = {
   id: string
@@ -13,8 +13,7 @@ export type UserItem = {
   position?: string
   isActive: boolean
   notes?: string
-  createdAt?: string // ← adicione esta linha
-
+  createdAt?: string
 }
 
 export type UpdateUserPayload = {
@@ -31,45 +30,25 @@ export type UpdateUserPayload = {
   position?: string
   isActive: boolean
   notes?: string
-  createdAt?: string // ← adicione esta linha
-
 }
 
 export type CreateUserPayload = Omit<UpdateUserPayload, 'id'>
 
-type UsersListResponse =
-  | UserItem[]
-  | {
-    items: UserItem[]
-    totalCount?: number
-    page?: number
-    pageSize?: number
-  }
-
-function normalizeUsersResponse(data: UsersListResponse): UserItem[] {
-  if (Array.isArray(data)) {
-    return data
-  }
-
-  if (data && Array.isArray(data.items)) {
-    return data.items
-  }
-
+export async function getUsers(): Promise<UserItem[]> {
+  const res = await api.get('/users')
+  const data = res.data
+  if (Array.isArray(data)) return data
+  if (data?.items) return data.items
   return []
 }
 
-export async function getUsers(): Promise<UserItem[]> {
-  const data = await mockApi.get<UsersListResponse>('/users')
-  return normalizeUsersResponse(data)
-}
-
 export async function createUser(payload: CreateUserPayload): Promise<UserItem> {
-  const data = await mockApi.post<UserItem>('/users', payload)
-  return data
+  const res = await api.post('/users', payload)
+  return res.data
 }
 
 export async function updateUser(payload: UpdateUserPayload): Promise<UserItem> {
   const { id, ...body } = payload
-  const data = await mockApi.put<UserItem>(`/users/${id}`, body)
-  return data
+  const res = await api.put(`/users/${id}`, body)
+  return res.data
 }
