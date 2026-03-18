@@ -125,11 +125,12 @@
   ],
 
   "tenantModules": [
-    { "id": "tm-1", "tenantId": "tenant-1", "code": "documents", "name": "Documentos", "isEnabled": true },
-    { "id": "tm-2", "tenantId": "tenant-1", "code": "workflows", "name": "Workflows", "isEnabled": true },
-    { "id": "tm-3", "tenantId": "tenant-1", "code": "tasks", "name": "Tarefas", "isEnabled": true },
-    { "id": "tm-4", "tenantId": "tenant-1", "code": "organization", "name": "Organização", "isEnabled": true },
-    { "id": "tm-5", "tenantId": "tenant-1", "code": "metadata", "name": "Metadados", "isEnabled": true }
+    { "id": "tm-1", "tenantId": "tenant-1", "code": "document_types", "name": "Tipos de Documento", "isEnabled": true },
+    { "id": "tm-2", "tenantId": "tenant-1", "code": "workflows",      "name": "Workflows",          "isEnabled": true },
+    { "id": "tm-3", "tenantId": "tenant-1", "code": "tasks",          "name": "Tarefas",            "isEnabled": true },
+    { "id": "tm-4", "tenantId": "tenant-1", "code": "organization",   "name": "Organização",        "isEnabled": true },
+    { "id": "tm-5", "tenantId": "tenant-1", "code": "metadata",       "name": "Metadados",          "isEnabled": true },
+    { "id": "tm-6", "tenantId": "tenant-1", "code": "users",          "name": "Usuários",           "isEnabled": true }
   ],
 
   "documentInstances": [
