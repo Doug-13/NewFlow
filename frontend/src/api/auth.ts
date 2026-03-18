@@ -43,8 +43,9 @@ type MockPlatformAdminRecord = PlatformAdmin & {
 
 // ─── Detecção de ambiente ─────────────────────────────────────────────────────
 
-const API_URL = import.meta.env.VITE_API_URL
-const IS_LOCAL = !!API_URL
+const API_URL = import.meta.env.VITE_API_URL ?? ''
+const IS_LOCAL = !!API_URL && !API_URL.includes('localhost')
+
 
 // ─── Fonte de dados ───────────────────────────────────────────────────────────
 

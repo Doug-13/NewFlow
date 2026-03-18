@@ -2,32 +2,32 @@ import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 import { installMockAdapter } from './mockAdapter'
 
-const API_URL = import.meta.env.VITE_API_URL || ''
+const API_URL = import.meta.env.VITE_API_URL ?? ''
+
+// Mock ativo quando: sem URL, ou URL apontando para localhost
+const IS_MOCK = !API_URL || API_URL.includes('localhost')
 
 export const api = axios.create({
   baseURL: API_URL || 'http://localhost:5109/api/v1',
   withCredentials: true,
 })
 
-// ── Mock mode: sem VITE_API_URL → intercepta tudo localmente ──────────────────
-if (!API_URL) {
+if (IS_MOCK) {
   installMockAdapter(api)
 }
 
-// ── Auth header ───────────────────────────────────────────────────────────────
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-// ── Refresh token (só ativo quando há backend real) ───────────────────────────
 let isRefreshing = false
 
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
-    if (!API_URL) return Promise.reject(error) // mock mode: ignora
+    if (IS_MOCK) return Promise.reject(error)
 
     const status = error.response?.status
     const { isPlatformAdmin } = useAuthStore.getState()
