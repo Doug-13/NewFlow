@@ -49,15 +49,26 @@ export function DocumentTypesPage() {
     { title: 'Nome', dataIndex: 'name', key: 'name' },
     { title: 'Descrição', dataIndex: 'description', key: 'description' },
     { title: 'Status', key: 'isActive', render: (_: any, r: DocumentType) => <Tag color={r.isActive ? 'green' : 'red'}>{r.isActive ? 'Ativo' : 'Inativo'}</Tag> },
-    { title: 'Criado em', key: 'createdAt', render: (_: any, r: DocumentType) => format(new Date(r.createdAt), 'dd/MM/yyyy', { locale: ptBR }) },
-    { title: 'Ações', key: 'actions', render: (_: any, r: DocumentType) => (
-      <Space>
-        <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(r)} />
-        <Popconfirm title="Desativar tipo?" onConfirm={() => deleteMutation.mutate(r.id)}>
-          <Button size="small" icon={<DeleteOutlined />} danger />
-        </Popconfirm>
-      </Space>
-    )},
+    {
+      title: 'Criado em',
+      key: 'createdAt',
+      render: (_: any, r: DocumentType) => {
+        if (!r.createdAt) return '—'
+        const date = new Date(r.createdAt)
+        if (isNaN(date.getTime())) return '—'
+        return format(date, 'dd/MM/yyyy', { locale: ptBR })
+      }
+    },
+    {
+      title: 'Ações', key: 'actions', render: (_: any, r: DocumentType) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(r)} />
+          <Popconfirm title="Desativar tipo?" onConfirm={() => deleteMutation.mutate(r.id)}>
+            <Button size="small" icon={<DeleteOutlined />} danger />
+          </Popconfirm>
+        </Space>
+      )
+    },
   ]
 
   return (

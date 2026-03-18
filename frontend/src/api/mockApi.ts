@@ -1,258 +1,119 @@
-import { routes } from '../mocks/endpoints'
-import seedDataJson from '../mocks/data.json'
-import type { HttpMethod, RouteConfig } from '../mocks/endpoints/types'
+/**
+ * mockApi.ts
+ *
+ * Substituto do mockApi removido anteriormente.
+ * Usado por: auth.ts (getDbSnapshot) e users.ts (get/post/put)
+ *
+ * Lê e persiste dados no db.json via json-server rodando em localhost:3001.
+ * O auth.ts usa getDbSnapshot() de forma síncrona — mantemos um cache
+ * em memória que é carregado na primeira chamada assíncrona.
+ */
 
-type ResponseType =
-  | 'raw'
-  | 'list'
-  | 'item'
-  | 'created'
-  | 'updated'
-  | 'deleted'
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1'
 
-type Database = Record<string, any>
+// ─── Cache em memória para getDbSnapshot (usado pelo auth.ts) ────────────────
 
-let db: Database = deepClone(seedDataJson as Database)
+let _dbCache: Record<string, unknown> | null = null
 
-function deepClone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value))
+async function loadDbCache(): Promise<Record<string, unknown>> {
+  if (_dbCache) return _dbCache
+
+  // Carrega as coleções que auth.ts precisa em paralelo
+  const [users, platformAdmins, tenantModules] = await Promise.all([
+    fetch(`${BASE_URL}/users`).then((r) => r.json()).catch(() => []),
+    fetch(`${BASE_URL}/platformAdmins`).then((r) => r.json()).catch(() => []),
+    fetch(`${BASE_URL}/tenantModules`).then((r) => r.json()).catch(() => []),
+  ])
+
+  _dbCache = { users, platformAdmins, tenantModules }
+  return _dbCache
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+/**
+ * Retorna snapshot síncrono do banco — funciona após preload().
+ * auth.ts chama isso dentro de funções assíncronas, então o cache
+ * já estará populado quando getDbSnapshot() for invocado.
+ */
+function getDbSnapshot(): Record<string, unknown> {
+  if (!_dbCache) {
+    // Fallback seguro caso preload não tenha sido chamado ainda
+    return { users: [], platformAdmins: [], tenantModules: [] }
+  }
+  return _dbCache
 }
 
-function normalizePath(url: string) {
-  const path = url.split('?')[0].replace(/\/+$/, '')
-  return path || '/'
+/**
+ * Invalida o cache — chame após POST/PUT para forçar reload.
+ */
+function invalidateCache() {
+  _dbCache = null
 }
 
-function getQueryParams(url: string) {
-  const queryString = url.includes('?') ? url.substring(url.indexOf('?')) : ''
-  return new URLSearchParams(queryString)
+// ─── Cliente HTTP genérico ────────────────────────────────────────────────────
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const url = `${BASE_URL}${path}`
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }))
+    throw new Error(err.message ?? 'Erro na requisição')
+  }
+
+  // DELETE retorna 200 sem body no json-server
+  const text = await res.text()
+  return (text ? JSON.parse(text) : {}) as T
 }
 
-function matchPath(template: string, actualUrl: string) {
-  const templateParts = normalizePath(template).split('/').filter(Boolean)
-  const actualParts = normalizePath(actualUrl).split('/').filter(Boolean)
-
-  if (templateParts.length !== actualParts.length) {
-    return null
-  }
-
-  const params: Record<string, string> = {}
-
-  for (let i = 0; i < templateParts.length; i++) {
-    const templatePart = templateParts[i]
-    const actualPart = actualParts[i]
-
-    if (templatePart.startsWith(':')) {
-      params[templatePart.slice(1)] = actualPart
-      continue
-    }
-
-    if (templatePart !== actualPart) {
-      return null
-    }
-  }
-
-  return params
-}
-
-function findRoute(method: HttpMethod, url: string) {
-  for (const route of routes) {
-    if (route.method !== method) continue
-
-    const params = matchPath(route.path, url)
-    if (params) {
-      return { route, params }
-    }
-  }
-
-  return null
-}
-
-function ensureArrayResource(resource: string) {
-  const value = db[resource]
-
-  if (!Array.isArray(value)) {
-    throw new Error(`O recurso "${resource}" não é uma coleção.`)
-  }
-
-  return value
-}
-
-function applyFilters(items: any[], query: URLSearchParams) {
-  let result = [...items]
-
-  const search = query.get('search')?.trim().toLowerCase()
-
-  if (search) {
-    result = result.filter((item) =>
-      Object.values(item).some(
-        (value) =>
-          typeof value === 'string' &&
-          value.toLowerCase().includes(search)
-      )
-    )
-  }
-
-  for (const [key, value] of query.entries()) {
-    if (['page', 'pageSize', 'search'].includes(key)) continue
-
-    result = result.filter((item) => String(item[key]) === value)
-  }
-
-  return result
-}
-
-function paginate(items: any[], query: URLSearchParams) {
-  const page = Number(query.get('page') || 1)
-  const pageSize = Number(query.get('pageSize') || 20)
-
-  const safePage = Number.isNaN(page) || page < 1 ? 1 : page
-  const safePageSize = Number.isNaN(pageSize) || pageSize < 1 ? 20 : pageSize
-
-  const start = (safePage - 1) * safePageSize
-  const end = start + safePageSize
-
-  return {
-    items: items.slice(start, end),
-    totalCount: items.length,
-    page: safePage,
-    pageSize: safePageSize,
-  }
-}
-
-function generateId(prefix: string) {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return `${prefix}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`
-  }
-
-  return `${prefix}_${Date.now()}`
-}
-
-function getPrefixByResource(resource: string) {
-  const map: Record<string, string> = {
-    users: 'usr',
-    metadataSets: 'set',
-    metadataDefinitions: 'meta',
-    metadataOptionSets: 'optset',
-    metadataOptions: 'opt',
-    documentTypes: 'doctype',
-    workflows: 'wf',
-    documents: 'doc',
-  }
-
-  return map[resource] ?? 'id'
-}
-
-async function request<T = any>(
-  method: HttpMethod,
-  url: string,
-  body?: any
-): Promise<T> {
-  await sleep(250)
-
-  const found = findRoute(method, url)
-
-  if (!found) {
-    throw new Error(`Mock route não encontrada para ${method} ${url}`)
-  }
-
-  const { route, params } = found
-  const query = getQueryParams(url)
-
-  if (route.responseType === 'raw') {
-    return deepClone(db[route.resource]) as T
-  }
-
-  if (method === 'GET' && route.responseType === 'list') {
-    const collection = ensureArrayResource(route.resource)
-    const filtered = applyFilters(collection, query)
-    return paginate(filtered, query) as T
-  }
-
-  if (method === 'GET' && route.responseType === 'item') {
-    const collection = ensureArrayResource(route.resource)
-    const item = collection.find((x) => String(x.id) === params.id)
-
-    if (!item) {
-      throw new Error(`Registro não encontrado em ${route.resource} para id=${params.id}`)
-    }
-
-    return deepClone(item) as T
-  }
-
-  if (method === 'POST' && route.responseType === 'created') {
-    const collection = ensureArrayResource(route.resource)
-    const prefix = getPrefixByResource(route.resource)
-
-    const newItem = {
-      id: body?.id ?? generateId(prefix),
-      ...body,
-    }
-
-    collection.push(newItem)
-    return deepClone(newItem) as T
-  }
-
-  if (method === 'PUT' && route.responseType === 'updated') {
-    const collection = ensureArrayResource(route.resource)
-    const index = collection.findIndex((x) => String(x.id) === params.id)
-
-    if (index === -1) {
-      throw new Error(`Registro não encontrado em ${route.resource} para id=${params.id}`)
-    }
-
-    collection[index] = {
-      ...collection[index],
-      ...body,
-      id: collection[index].id,
-    }
-
-    return deepClone(collection[index]) as T
-  }
-
-  if (method === 'DELETE' && route.responseType === 'deleted') {
-    const collection = ensureArrayResource(route.resource)
-    const index = collection.findIndex((x) => String(x.id) === params.id)
-
-    if (index === -1) {
-      throw new Error(`Registro não encontrado em ${route.resource} para id=${params.id}`)
-    }
-
-    const removed = collection[index]
-    collection.splice(index, 1)
-
-    return deepClone(removed) as T
-  }
-
-  throw new Error(`Operação mock não suportada: ${method} ${url}`)
-}
+// ─── Interface pública ────────────────────────────────────────────────────────
 
 export const mockApi = {
-  get<T = any>(url: string) {
-    return request<T>('GET', url)
+  /**
+   * Carrega o cache inicial — chame uma vez no bootstrap da aplicação (main.tsx).
+   * Exemplo:
+   *   import { mockApi } from './api/mockApi'
+   *   await mockApi.preload()
+   *   ReactDOM.createRoot(...).render(...)
+   */
+  preload: loadDbCache,
+
+  /** Retorna snapshot síncrono (para auth.ts) */
+  getDbSnapshot,
+
+  get: <T>(path: string) => request<T>(path),
+
+  post: async <T>(path: string, body: unknown): Promise<T> => {
+    const result = await request<T>(path, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+    invalidateCache()
+    return result
   },
 
-  post<T = any>(url: string, body?: any) {
-    return request<T>('POST', url, body)
+  put: async <T>(path: string, body: unknown): Promise<T> => {
+    const result = await request<T>(path, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+    invalidateCache()
+    return result
   },
 
-  put<T = any>(url: string, body?: any) {
-    return request<T>('PUT', url, body)
+  patch: async <T>(path: string, body: unknown): Promise<T> => {
+    const result = await request<T>(path, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+    invalidateCache()
+    return result
   },
 
-  delete<T = any>(url: string) {
-    return request<T>('DELETE', url)
-  },
-
-  reset() {
-    db = deepClone(seedDataJson as Database)
-  },
-
-  getDbSnapshot() {
-    return deepClone(db)
+  delete: async (path: string): Promise<void> => {
+    await request(path, { method: 'DELETE' })
+    invalidateCache()
   },
 }

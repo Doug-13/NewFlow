@@ -239,8 +239,12 @@ export function UsersPage() {
       {
         title: 'Criado em',
         key: 'createdAt',
-        render: (_: unknown, r: ExtendedUserListItem) =>
-          format(new Date(r.createdAt), 'dd/MM/yyyy', { locale: ptBR }),
+        render: (_: unknown, r: ExtendedUserListItem) => {
+          if (!r.createdAt) return <span className="users-page__muted">—</span>
+          const date = new Date(r.createdAt)
+          if (isNaN(date.getTime())) return <span className="users-page__muted">—</span>
+          return format(date, 'dd/MM/yyyy', { locale: ptBR })
+        },
       },
     ],
     [],
@@ -415,9 +419,9 @@ export function UsersPage() {
                 editingUser
                   ? [{ min: 6, message: 'Mínimo de 6 caracteres' }]
                   : [
-                      { required: true, message: 'Informe a senha' },
-                      { min: 6, message: 'Mínimo de 6 caracteres' },
-                    ]
+                    { required: true, message: 'Informe a senha' },
+                    { min: 6, message: 'Mínimo de 6 caracteres' },
+                  ]
               }
               extra={
                 editingUser
