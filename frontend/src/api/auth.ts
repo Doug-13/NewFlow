@@ -1,4 +1,9 @@
 import type { User, PlatformAdmin } from '../types'
+import {
+  MOCK_PLATFORM_ADMINS,
+  MOCK_USERS,
+  MOCK_TENANT_MODULES,
+} from './mockData'
 
 export interface LoginResult {
   accessToken: string
@@ -36,20 +41,46 @@ type MockPlatformAdminRecord = PlatformAdmin & {
   [key: string]: unknown
 }
 
-// ─── Helpers internos ────────────────────────────────────────────────────────
+// ─── Detecção de ambiente ─────────────────────────────────────────────────────
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1'
-const AUTH_STORAGE_KEY = 'gestaodoc.mock.auth'
+const API_URL = import.meta.env.VITE_API_URL
+const IS_LOCAL = !!API_URL
 
-async function fetchAll<T>(path: string): Promise<T[]> {
-  try {
-    const res = await fetch(`${BASE_URL}${path}`)
-    if (!res.ok) return []
-    return res.json()
-  } catch {
-    return []
+// ─── Fonte de dados ───────────────────────────────────────────────────────────
+
+async function getPlatformAdmins(): Promise<MockPlatformAdminRecord[]> {
+  if (IS_LOCAL) {
+    try {
+      const res = await fetch(`${API_URL}/platformAdmins`)
+      if (res.ok) return res.json()
+    } catch { /* fallback */ }
   }
+  return MOCK_PLATFORM_ADMINS as unknown as MockPlatformAdminRecord[]
 }
+
+async function getUsers(): Promise<MockUserRecord[]> {
+  if (IS_LOCAL) {
+    try {
+      const res = await fetch(`${API_URL}/users`)
+      if (res.ok) return res.json()
+    } catch { /* fallback */ }
+  }
+  return MOCK_USERS as unknown as MockUserRecord[]
+}
+
+async function getTenantModules(): Promise<MockTenantModule[]> {
+  if (IS_LOCAL) {
+    try {
+      const res = await fetch(`${API_URL}/tenantModules`)
+      if (res.ok) return res.json()
+    } catch { /* fallback */ }
+  }
+  return MOCK_TENANT_MODULES as unknown as MockTenantModule[]
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const AUTH_STORAGE_KEY = 'gestaodoc.mock.auth'
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
@@ -91,21 +122,20 @@ function clearSession() {
   localStorage.removeItem(AUTH_STORAGE_KEY)
 }
 
-// ─── API pública ─────────────────────────────────────────────────────────────
+// ─── API pública ──────────────────────────────────────────────────────────────
 
 export const login = async (
   email: string,
-  password: string
+  password: string,
 ): Promise<LoginResult> => {
   const normalizedEmail = normalizeEmail(email)
 
-  // 1. Verifica platformAdmins
-  const platformAdmins = await fetchAll<MockPlatformAdminRecord>('/platformAdmins')
+  const platformAdmins = await getPlatformAdmins()
   const platformAdmin = platformAdmins.find(
     (item) =>
       normalizeEmail(item.email) === normalizedEmail &&
       item.password === password &&
-      isPlatformAdminActive(item)
+      isPlatformAdminActive(item),
   )
 
   if (platformAdmin) {
@@ -119,21 +149,17 @@ export const login = async (
     return result
   }
 
-  // 2. Verifica usuários normais
-  const users = await fetchAll<MockUserRecord>('/users')
+  const users = await getUsers()
   const user = users.find(
     (item) =>
       normalizeEmail(item.email) === normalizedEmail &&
       item.password === password &&
-      isUserActive(item)
+      isUserActive(item),
   )
 
-  if (!user) {
-    throw new Error('Email ou senha inválidos.')
-  }
+  if (!user) throw new Error('Email ou senha inválidos.')
 
-  // 3. Busca módulos habilitados do tenant
-  const tenantModules = await fetchAll<MockTenantModule>('/tenantModules')
+  const tenantModules = await getTenantModules()
   const enabledModules = tenantModules
     .filter((m) => m.tenantId === user.tenantId && m.isEnabled)
     .map((m) => m.code)
@@ -157,9 +183,9 @@ export const getMe = async (): Promise<LoginResult> => {
   if (!session) throw new Error('Usuário não autenticado.')
 
   if (session.platformAdmin?.id) {
-    const admins = await fetchAll<MockPlatformAdminRecord>('/platformAdmins')
+    const admins = await getPlatformAdmins()
     const currentAdmin = admins.find(
-      (item) => item.id === session.platformAdmin?.id && isPlatformAdminActive(item)
+      (item) => item.id === session.platformAdmin?.id && isPlatformAdminActive(item),
     )
     if (!currentAdmin) { clearSession(); throw new Error('Sessão inválida.') }
 
@@ -174,13 +200,13 @@ export const getMe = async (): Promise<LoginResult> => {
   }
 
   if (session.user?.id) {
-    const users = await fetchAll<MockUserRecord>('/users')
+    const users = await getUsers()
     const currentUser = users.find(
-      (item) => item.id === session.user?.id && isUserActive(item)
+      (item) => item.id === session.user?.id && isUserActive(item),
     )
     if (!currentUser) { clearSession(); throw new Error('Sessão inválida.') }
 
-    const tenantModules = await fetchAll<MockTenantModule>('/tenantModules')
+    const tenantModules = await getTenantModules()
     const enabledModules = tenantModules
       .filter((m) => m.tenantId === currentUser.tenantId && m.isEnabled)
       .map((m) => m.code)
