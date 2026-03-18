@@ -22,7 +22,8 @@
       "jobTitle": "Advogado Sênior",
       "isActive": true,
       "status": "active",
-      "notes": ""
+      "notes": "",
+      "createdAt": "2024-01-05T00:00:00Z"
     },
     {
       "id": "user-2",
@@ -37,7 +38,8 @@
       "jobTitle": "Analista de Compras",
       "isActive": true,
       "status": "active",
-      "notes": ""
+      "notes": "",
+      "createdAt": "2024-01-05T00:00:00Z"
     },
     {
       "id": "user-3",
@@ -52,7 +54,8 @@
       "jobTitle": "Gerente de Compras",
       "isActive": true,
       "status": "active",
-      "notes": ""
+      "notes": "",
+      "createdAt": "2024-01-05T00:00:00Z"
     },
     {
       "id": "user-4",
@@ -67,7 +70,8 @@
       "jobTitle": "Controller",
       "isActive": true,
       "status": "active",
-      "notes": ""
+      "notes": "",
+      "createdAt": "2024-01-05T00:00:00Z"
     },
     {
       "id": "user-5",
@@ -82,7 +86,8 @@
       "jobTitle": "HRBP",
       "isActive": true,
       "status": "active",
-      "notes": ""
+      "notes": "",
+      "createdAt": "2024-01-05T00:00:00Z"
     },
     {
       "name": "Douglas A. de Mello",
@@ -91,7 +96,8 @@
       "role": "Operador",
       "phone": "51992883720",
       "isActive": true,
-      "id": "_7lsSw5"
+      "id": "_7lsSw5",
+      "createdAt": "2024-01-05T00:00:00Z"
     }
   ],
   "tenantModules": [

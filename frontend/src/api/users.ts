@@ -13,6 +13,8 @@ export type UserItem = {
   position?: string
   isActive: boolean
   notes?: string
+  createdAt?: string // ← adicione esta linha
+
 }
 
 export type UpdateUserPayload = {
@@ -29,6 +31,8 @@ export type UpdateUserPayload = {
   position?: string
   isActive: boolean
   notes?: string
+  createdAt?: string // ← adicione esta linha
+
 }
 
 export type CreateUserPayload = Omit<UpdateUserPayload, 'id'>
@@ -36,11 +40,11 @@ export type CreateUserPayload = Omit<UpdateUserPayload, 'id'>
 type UsersListResponse =
   | UserItem[]
   | {
-      items: UserItem[]
-      totalCount?: number
-      page?: number
-      pageSize?: number
-    }
+    items: UserItem[]
+    totalCount?: number
+    page?: number
+    pageSize?: number
+  }
 
 function normalizeUsersResponse(data: UsersListResponse): UserItem[] {
   if (Array.isArray(data)) {

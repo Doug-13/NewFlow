@@ -330,7 +330,7 @@ export function UsersPage() {
 
       <div className="users-page__table-card">
         <Table
-          dataSource={data ?? []}
+          dataSource={(data ?? []) as ExtendedUserListItem[]}
           columns={columns}
           rowKey="id"
           loading={isLoading}
