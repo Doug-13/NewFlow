@@ -20,7 +20,7 @@ import {
   UploadOutlined,
 } from '@ant-design/icons'
 import { getUsers, createUser, updateUser } from '../../api/users'
-import type { UserListItem } from '../../types'
+import type { UserItem } from '../../api/users'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import './UsersPage.css'
@@ -29,7 +29,7 @@ import './UsersPage.css'
 const { Title, Text } = Typography
 const { TextArea } = Input
 
-type ExtendedUserListItem = UserListItem & {
+type ExtendedUserListItem = UserItem & {
   cpf?: string
   phone?: string
   photoUrl?: string
@@ -292,15 +292,35 @@ export function UsersPage() {
     if (editingUser) {
       updateMutation.mutate({
         id: editingUser.id,
-        ...payload,
+        name: payload.name,
+        email: payload.email,
         password: values.password?.trim() ? values.password : undefined,
+        role: payload.role,
+        cpf: payload.cpf,
+        phone: payload.phone,
+        photoUrl: payload.photoUrl,
+        department: payload.department,
+        jobTitle: payload.jobTitle,
+        position: payload.position,
+        isActive: payload.isActive,
+        notes: payload.notes,
       })
       return
     }
 
     createMutation.mutate({
-      ...payload,
+      name: payload.name,
+      email: payload.email,
       password: values.password,
+      role: payload.role,
+      cpf: payload.cpf,
+      phone: payload.phone,
+      photoUrl: payload.photoUrl,
+      department: payload.department,
+      jobTitle: payload.jobTitle,
+      position: payload.position,
+      isActive: payload.isActive,
+      notes: payload.notes,
     })
   }
 
@@ -330,7 +350,7 @@ export function UsersPage() {
 
       <div className="users-page__table-card">
         <Table
-          dataSource={(data ?? []) as ExtendedUserListItem[]}
+          dataSource={data ?? []}
           columns={columns}
           rowKey="id"
           loading={isLoading}
