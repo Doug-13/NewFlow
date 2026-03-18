@@ -1,3 +1,4 @@
+// src/api/mockAdapter.ts
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import {
   MOCK_DOCUMENT_INSTANCES,
@@ -14,19 +15,35 @@ import {
   MOCK_DASHBOARD,
 } from './mockData'
 
-// Estado em memória — permite criar/editar/deletar durante a sessão
+// ─── Estado em memória ────────────────────────────────────────────────────────
+
 const db = {
-  'document-instances': structuredClone(MOCK_DOCUMENT_INSTANCES) as any[],
-  tasks:                structuredClone(MOCK_TASKS) as any[],
-  workflows:            structuredClone(MOCK_WORKFLOWS) as any[],
-  'document-types':     structuredClone(MOCK_DOCUMENT_TYPES) as any[],
-  'metadata/sets':      structuredClone(MOCK_METADATA_SETS) as any[],
+  'document-instances':   structuredClone(MOCK_DOCUMENT_INSTANCES) as any[],
+  'tasks':                structuredClone(MOCK_TASKS) as any[],
+  'workflows':            structuredClone(MOCK_WORKFLOWS) as any[],
+  'document-types':       structuredClone(MOCK_DOCUMENT_TYPES) as any[],
+  'metadata/sets':        structuredClone(MOCK_METADATA_SETS) as any[],
   'metadata/definitions': structuredClone(MOCK_METADATA_DEFINITIONS) as any[],
-  'metadata/values':    structuredClone(MOCK_METADATA_VALUES) as any[],
-  'organization/units': structuredClone(MOCK_ORGANIZATION_UNITS) as any[],
-  'organization/areas': structuredClone(MOCK_ORGANIZATION_AREAS) as any[],
-  'organization/roles': structuredClone(MOCK_ORGANIZATION_ROLES) as any[],
-  users:                structuredClone(MOCK_USERS) as any[],
+  'metadata/values':      structuredClone(MOCK_METADATA_VALUES) as any[],
+  'organization/units':   structuredClone(MOCK_ORGANIZATION_UNITS) as any[],
+  'organization/areas':   structuredClone(MOCK_ORGANIZATION_AREAS) as any[],
+  'organization/roles':   structuredClone(MOCK_ORGANIZATION_ROLES) as any[],
+  'users':                structuredClone(MOCK_USERS) as any[],
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseBody(data: unknown): Record<string, unknown> {
+  if (!data) return {}
+  if (typeof data === 'object') return data as Record<string, unknown>
+  if (typeof data === 'string') {
+    try { return JSON.parse(data) } catch { return {} }
+  }
+  return {}
+}
+
+function generateId() {
+  return `mock-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
 function makeResponse(data: unknown, status = 200): AxiosResponse {
@@ -40,8 +57,8 @@ function makeResponse(data: unknown, status = 200): AxiosResponse {
 }
 
 function resolveCollection(url: string): { key: keyof typeof db; id?: string } | null {
-  // /metadata/values/:id
-  const metaValMatch = url.match(/^\/metadata\/values\/(.+)$/)
+  // /metadata/values/:documentInstanceId
+  const metaValMatch = url.match(/^\/metadata\/values(?:\/(.+))?$/)
   if (metaValMatch) return { key: 'metadata/values', id: metaValMatch[1] }
 
   // /metadata/definitions/:id
@@ -56,11 +73,11 @@ function resolveCollection(url: string): { key: keyof typeof db; id?: string } |
   const orgMatch = url.match(/^\/(organization\/(?:units|areas|roles))(?:\/(.+))?$/)
   if (orgMatch) return { key: orgMatch[1] as keyof typeof db, id: orgMatch[2] }
 
-  // /document-instances/:id/...  (ignora sub-rotas como /files, /cancel)
+  // /document-instances/:id/... (ignora sub-rotas como /files, /cancel)
   const docMatch = url.match(/^\/document-instances(?:\/([^/]+))?(?:\/.*)?$/)
   if (docMatch) return { key: 'document-instances', id: docMatch[1] }
 
-  // /tasks/:id/execute  (ignora sub-rota)
+  // /tasks/:id/execute (ignora sub-rota)
   const taskMatch = url.match(/^\/tasks(?:\/([^/]+))?(?:\/.*)?$/)
   if (taskMatch) return { key: 'tasks', id: taskMatch[1] }
 
@@ -79,9 +96,7 @@ function resolveCollection(url: string): { key: keyof typeof db; id?: string } |
   return null
 }
 
-function generateId() {
-  return `mock-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-}
+// ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export function installMockAdapter(instance: AxiosInstance) {
   instance.interceptors.request.use((config): never => {
@@ -96,7 +111,6 @@ export function installMockAdapter(instance: AxiosInstance) {
 
     const resolved = resolveCollection(url)
     if (!resolved) {
-      // Rota não mapeada — retorna vazio em vez de falhar
       throw { isMockResponse: true, response: makeResponse([]) }
     }
 
@@ -111,13 +125,14 @@ export function installMockAdapter(instance: AxiosInstance) {
         throw { isMockResponse: true, response: makeResponse(filtered) }
       }
 
+      // GET por ID
       if (id) {
         const item = collection.find((i: any) => i.id === id)
         if (!item) throw { isMockResponse: true, response: makeResponse(null, 404) }
         throw { isMockResponse: true, response: makeResponse(item) }
       }
 
-      // Filtra por query params (status, documentTypeId, metadataSetId, etc.)
+      // GET lista com filtros por query params
       let result = [...collection]
       Object.entries(params).forEach(([k, v]) => {
         if (v !== undefined && v !== null && v !== '') {
@@ -143,31 +158,41 @@ export function installMockAdapter(instance: AxiosInstance) {
 
       // /metadata/values/:documentInstanceId — salva valores
       if (key === 'metadata/values' && id) {
-        const body = JSON.parse(config.data ?? '{}')
-        const values = body.values ?? []
+        const body = parseBody(config.data)
+        const values = (body.values ?? []) as any[]
         values.forEach((v: any) => {
           const idx = collection.findIndex(
-            (i: any) => i.documentInstanceId === id && i.metadataDefinitionId === v.metadataDefinitionId
+            (i: any) =>
+              i.documentInstanceId === id &&
+              i.metadataDefinitionId === v.metadataDefinitionId
           )
           if (idx !== -1) {
             collection[idx] = { ...collection[idx], value: v.value }
           } else {
-            collection.push({ id: generateId(), documentInstanceId: id, ...v })
+            collection.push({
+              id: generateId(),
+              documentInstanceId: id,
+              ...v,
+            })
           }
         })
         throw { isMockResponse: true, response: makeResponse({ success: true }) }
       }
 
       // POST genérico — cria item
-      const body = JSON.parse(config.data ?? '{}')
-      const newItem = { id: generateId(), createdAt: new Date().toISOString(), ...body }
+      const body = parseBody(config.data)
+      const newItem = {
+        id: generateId(),
+        createdAt: new Date().toISOString(),
+        ...body,
+      }
       collection.push(newItem)
       throw { isMockResponse: true, response: makeResponse(newItem, 201) }
     }
 
     // ── PUT ────────────────────────────────────────────────────────────────
     if (method === 'put' && id) {
-      const body = JSON.parse(config.data ?? '{}')
+      const body = parseBody(config.data)
       const idx = collection.findIndex((i: any) => i.id === id)
       if (idx !== -1) {
         collection[idx] = { ...collection[idx], ...body }
@@ -178,7 +203,7 @@ export function installMockAdapter(instance: AxiosInstance) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (method === 'patch' && id) {
-      const body = JSON.parse(config.data ?? '{}')
+      const body = parseBody(config.data)
       const idx = collection.findIndex((i: any) => i.id === id)
       if (idx !== -1) {
         collection[idx] = { ...collection[idx], ...body }
@@ -197,7 +222,7 @@ export function installMockAdapter(instance: AxiosInstance) {
     throw { isMockResponse: true, response: makeResponse([]) }
   })
 
-  // Intercepta o "erro" lançado acima e converte em resposta normal
+  // Converte o "erro" lançado pelo interceptor de request em resposta normal
   instance.interceptors.response.use(
     (res) => res,
     (err) => {
