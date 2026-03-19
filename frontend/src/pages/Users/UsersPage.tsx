@@ -428,6 +428,7 @@ export function UsersPage() {
       phone: values.phone?.replace(/\D/g, '') || undefined,
       photoUrl: photoPreview,
       positions,
+      isActive: values.status !== 'inactive',
     }
     if (editingUser) {
       updateMutation.mutate({ id: editingUser.id, ...payload, password: values.password?.trim() || undefined })

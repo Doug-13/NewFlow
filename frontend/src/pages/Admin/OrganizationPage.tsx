@@ -467,16 +467,14 @@ function PositionsTab() {
       <Modal
         title={preview.length > 0 ? `Prévia — ${preview.length} posição(ões) para importar` : 'Importar posições em lote (CSV)'}
         open={pasteOpen}
-        onCancel={() => { setPasteOpen(false); setPasteText(''); setPasteErrors([]); setPreview([]) }}
-        onOk={handleConfirmImport}
-        okText={preview.length > 0 ? `Confirmar importação (${preview.length})` : 'Validar'}
-        onOkText="Confirmar"
-        okButtonProps={{ disabled: preview.length === 0 }}
-        cancelText={preview.length > 0 ? 'Voltar' : 'Cancelar'}
         onCancel={preview.length > 0
-          ? () => setPreview([])   // volta para edição
+          ? () => setPreview([])
           : () => { setPasteOpen(false); setPasteText(''); setPasteErrors([]); setPreview([]) }
         }
+        onOk={handleConfirmImport}
+        okText={preview.length > 0 ? `Confirmar importação (${preview.length})` : 'Validar'}
+        okButtonProps={{ disabled: preview.length === 0 }}
+        cancelText={preview.length > 0 ? '← Editar CSV' : 'Cancelar'}
         width={780}
         destroyOnHidden
       >
