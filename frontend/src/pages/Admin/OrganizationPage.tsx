@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Tabs, Table, Button, Modal, Form, Input, Select, Space,
-  Popconfirm, Typography, Tag, Empty, Upload, message, Tooltip,
+  Popconfirm, Typography, Tag, Upload, message, Tooltip,
 } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
@@ -266,7 +266,7 @@ function PositionsTab() {
   const handleCsvUpload: UploadProps['beforeUpload'] = (file) => {
     const reader = new FileReader()
     reader.onload = (e) => {
-      const { added, skipped, errors, newPositions } = processCsvText(e.target?.result as string)
+      const { errors, newPositions } = processCsvText(e.target?.result as string)
       // Mostra apenas as novas linhas no preview (exclui as já existentes)
       const onlyNew = newPositions.slice(positions.length)
       setPreview(onlyNew)
@@ -342,14 +342,14 @@ function PositionsTab() {
   const hasFilter = fUser || fUnit || fArea || fDisc || fRole
 
   // ── Options helpers ────────────────────────────────────────────────────────
-  const opt = (label: string) => (v: any) => ({ label: v.code ? `${v.name} (${v.code})` : v.name, value: v.id })
+  const opt = () => (v: any) => ({ label: v.code ? `${v.name} (${v.code})` : v.name, value: v.id })
 
   const addSelects = [
     { label: 'Usuário',    value: userId,       set: setUserId,       opts: (users as any[]).map((u: any) => ({ label: u.name, value: u.id })) },
-    { label: 'Unidade',    value: unitId,       set: setUnitId,       opts: units.map(opt('u')) },
-    { label: 'Área',       value: areaId,       set: setAreaId,       opts: allAreas.map(opt('a')) },
-    { label: 'Disciplina', value: disciplineId, set: setDisciplineId, opts: allDisc.map(opt('d')) },
-    { label: 'Função',     value: roleId,       set: setRoleId,       opts: allRoles.map(opt('r')) },
+    { label: 'Unidade',    value: unitId,       set: setUnitId,       opts: units.map(opt()) },
+    { label: 'Área',       value: areaId,       set: setAreaId,       opts: allAreas.map(opt()) },
+    { label: 'Disciplina', value: disciplineId, set: setDisciplineId, opts: allDisc.map(opt()) },
+    { label: 'Função',     value: roleId,       set: setRoleId,       opts: allRoles.map(opt()) },
   ]
 
   // ── Colunas da tabela ──────────────────────────────────────────────────────
@@ -440,10 +440,10 @@ function PositionsTab() {
         <Select allowClear placeholder="Filtrar usuário" style={{ width: 160 }} value={fUser} onChange={setFUser}
           options={(users as any[]).map((u: any) => ({ label: u.name, value: u.id }))} showSearch
           filterOption={(input, opt) => (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())} />
-        <Select allowClear placeholder="Filtrar unidade"    style={{ width: 150 }} value={fUnit} onChange={setFUnit}    options={units.map(opt('u'))} />
-        <Select allowClear placeholder="Filtrar área"       style={{ width: 150 }} value={fArea} onChange={setFArea}    options={allAreas.map(opt('a'))} />
-        <Select allowClear placeholder="Filtrar disciplina" style={{ width: 160 }} value={fDisc} onChange={setFDisc}    options={allDisc.map(opt('d'))} />
-        <Select allowClear placeholder="Filtrar função"     style={{ width: 150 }} value={fRole} onChange={setFRole}    options={allRoles.map(opt('r'))} />
+        <Select allowClear placeholder="Filtrar unidade"    style={{ width: 150 }} value={fUnit} onChange={setFUnit}    options={units.map(opt())} />
+        <Select allowClear placeholder="Filtrar área"       style={{ width: 150 }} value={fArea} onChange={setFArea}    options={allAreas.map(opt())} />
+        <Select allowClear placeholder="Filtrar disciplina" style={{ width: 160 }} value={fDisc} onChange={setFDisc}    options={allDisc.map(opt())} />
+        <Select allowClear placeholder="Filtrar função"     style={{ width: 150 }} value={fRole} onChange={setFRole}    options={allRoles.map(opt())} />
         {hasFilter && (
           <Button size="small" type="link" onClick={() => {
             setFUser(undefined); setFUnit(undefined)
