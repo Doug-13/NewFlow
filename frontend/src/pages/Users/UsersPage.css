@@ -386,3 +386,192 @@
     padding-right: 18px;
   }
 }
+
+/* ── Adicione ao final do seu UsersPage.css ────────────────────────────────── */
+
+/* Modal tabs */
+.users-page__modal-tabs .ant-tabs-content-holder {
+  padding-top: 16px;
+}
+
+/* ── PositionsTab ──────────────────────────────────────────────────────────── */
+
+.positions-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Bloco do formulário de adição */
+.positions-tab__form {
+  background: var(--color-bg-container, #fafafa);
+  border: 1px solid var(--color-border, #e8e8e8);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.positions-tab__form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Grid dos 4 seletores */
+.positions-tab__selects {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  .positions-tab__selects {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.positions-tab__select-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.positions-tab__select-item label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text, #333);
+}
+
+.positions-tab__add-btn {
+  align-self: flex-start;
+}
+
+/* ── Lista de posições ─────────────────────────────────────────────────────── */
+
+.positions-tab__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 80px;
+}
+
+.positions-tab__empty {
+  margin: 16px 0;
+}
+
+/* Card de cada posição */
+.positions-tab__position-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid var(--color-border, #e8e8e8);
+  border-radius: 8px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.positions-tab__position-card:hover {
+  border-color: var(--color-primary, #1677ff);
+  box-shadow: 0 1px 6px rgba(22, 119, 255, 0.1);
+}
+
+/* Ícone */
+.positions-tab__position-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #e6f4ff;
+  color: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+/* Textos */
+.positions-tab__position-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.positions-tab__position-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.positions-tab__crumb-sep {
+  color: var(--color-text-quaternary, #bbb);
+}
+
+.positions-tab__crumb {
+  font-weight: 500;
+}
+
+.positions-tab__crumb--unit {
+  color: #389e0d;
+}
+
+.positions-tab__crumb--area {
+  color: #d46b08;
+}
+
+.positions-tab__crumb--discipline {
+  color: #531dab;
+}
+
+.positions-tab__position-role {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text, #222);
+}
+
+/* Botão remover */
+.positions-tab__remove-btn {
+  flex-shrink: 0;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+
+.positions-tab__position-card:hover .positions-tab__remove-btn {
+  opacity: 1;
+}
+
+/* ── Filtros da tabela ─────────────────────────────────────────────────────── */
+
+.users-page__filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--color-bg-container, #fafafa);
+  border: 1px solid var(--color-border, #e8e8e8);
+  border-radius: 8px;
+}
+
+/* Avatar menor no modal */
+.users-page__profile-upload {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.users-page__profile-upload-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}

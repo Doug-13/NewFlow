@@ -8,7 +8,6 @@
       "isActive": true
     }
   ],
-
   "users": [
     {
       "id": "user-admin",
@@ -24,7 +23,13 @@
       "isActive": true,
       "status": "active",
       "createdAt": "2024-01-10T08:00:00Z",
-      "notes": ""
+      "notes": "",
+      "substituteId": null,
+      "substituteName": null,
+      "environments": [
+        "Web",
+        "Desktop"
+      ]
     },
     {
       "id": "user-gestor",
@@ -40,7 +45,12 @@
       "isActive": true,
       "status": "active",
       "createdAt": "2024-01-10T08:00:00Z",
-      "notes": ""
+      "notes": "",
+      "substituteId": null,
+      "substituteName": null,
+      "environments": [
+        "Web"
+      ]
     },
     {
       "id": "user-1",
@@ -56,7 +66,13 @@
       "isActive": true,
       "status": "active",
       "createdAt": "2024-01-15T08:00:00Z",
-      "notes": ""
+      "notes": "",
+      "substituteId": "user-2",
+      "substituteName": "Fernanda Oliveira",
+      "environments": [
+        "Web",
+        "Mobile"
+      ]
     },
     {
       "id": "user-2",
@@ -70,9 +86,14 @@
       "department": "Compras",
       "jobTitle": "Analista de Compras",
       "isActive": true,
-      "status": "active",
+      "status": "absent",
       "createdAt": "2024-01-20T08:00:00Z",
-      "notes": ""
+      "notes": "",
+      "substituteId": "user-3",
+      "substituteName": "Ricardo Alves",
+      "environments": [
+        "Web"
+      ]
     },
     {
       "id": "user-3",
@@ -88,7 +109,13 @@
       "isActive": true,
       "status": "active",
       "createdAt": "2024-02-01T08:00:00Z",
-      "notes": ""
+      "notes": "",
+      "substituteId": null,
+      "substituteName": null,
+      "environments": [
+        "Web",
+        "Desktop"
+      ]
     },
     {
       "id": "user-4",
@@ -104,7 +131,12 @@
       "isActive": true,
       "status": "active",
       "createdAt": "2024-02-10T08:00:00Z",
-      "notes": ""
+      "notes": "",
+      "substituteId": null,
+      "substituteName": null,
+      "environments": [
+        "Web"
+      ]
     },
     {
       "id": "user-5",
@@ -118,21 +150,267 @@
       "department": "RH",
       "jobTitle": "HRBP",
       "isActive": true,
-      "status": "active",
+      "status": "inactive",
       "createdAt": "2024-03-01T08:00:00Z",
-      "notes": ""
+      "notes": "",
+      "substituteId": null,
+      "substituteName": null,
+      "environments": [
+        "Web"
+      ]
     }
   ],
-
   "tenantModules": [
-    { "id": "tm-1", "tenantId": "tenant-1", "code": "document_types", "name": "Tipos de Documento", "isEnabled": true },
-    { "id": "tm-2", "tenantId": "tenant-1", "code": "workflows",      "name": "Workflows",          "isEnabled": true },
-    { "id": "tm-3", "tenantId": "tenant-1", "code": "tasks",          "name": "Tarefas",            "isEnabled": true },
-    { "id": "tm-4", "tenantId": "tenant-1", "code": "organization",   "name": "Organização",        "isEnabled": true },
-    { "id": "tm-5", "tenantId": "tenant-1", "code": "metadata",       "name": "Metadados",          "isEnabled": true },
-    { "id": "tm-6", "tenantId": "tenant-1", "code": "users",          "name": "Usuários",           "isEnabled": true }
+    {
+      "id": "tm-1",
+      "tenantId": "tenant-1",
+      "code": "document_types",
+      "name": "Tipos de Documento",
+      "isEnabled": true
+    },
+    {
+      "id": "tm-2",
+      "tenantId": "tenant-1",
+      "code": "workflows",
+      "name": "Workflows",
+      "isEnabled": true
+    },
+    {
+      "id": "tm-3",
+      "tenantId": "tenant-1",
+      "code": "tasks",
+      "name": "Tarefas",
+      "isEnabled": true
+    },
+    {
+      "id": "tm-4",
+      "tenantId": "tenant-1",
+      "code": "organization",
+      "name": "Organização",
+      "isEnabled": true
+    },
+    {
+      "id": "tm-5",
+      "tenantId": "tenant-1",
+      "code": "metadata",
+      "name": "Metadados",
+      "isEnabled": true
+    },
+    {
+      "id": "tm-6",
+      "tenantId": "tenant-1",
+      "code": "users",
+      "name": "Usuários",
+      "isEnabled": true
+    }
   ],
-
+  "organizationUnits": [
+    {
+      "id": "unit-1",
+      "tenantId": "tenant-1",
+      "name": "Matriz São Paulo",
+      "description": "Sede principal",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "MSP"
+    },
+    {
+      "id": "unit-2",
+      "tenantId": "tenant-1",
+      "name": "Filial Rio de Janeiro",
+      "description": "",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "FRJ"
+    },
+    {
+      "id": "unit-3",
+      "tenantId": "tenant-1",
+      "name": "Filial Curitiba",
+      "description": "",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "FCW"
+    }
+  ],
+  "organizationAreas": [
+    {
+      "id": "area-1",
+      "tenantId": "tenant-1",
+      "name": "Jurídico",
+      "description": "",
+      "unitId": "unit-1",
+      "unitName": "Matriz São Paulo",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "JUR"
+    },
+    {
+      "id": "area-2",
+      "tenantId": "tenant-1",
+      "name": "Compras",
+      "description": "",
+      "unitId": "unit-1",
+      "unitName": "Matriz São Paulo",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "COM"
+    },
+    {
+      "id": "area-3",
+      "tenantId": "tenant-1",
+      "name": "Financeiro",
+      "description": "",
+      "unitId": "unit-1",
+      "unitName": "Matriz São Paulo",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "FIN"
+    },
+    {
+      "id": "area-4",
+      "tenantId": "tenant-1",
+      "name": "RH",
+      "description": "",
+      "unitId": "unit-1",
+      "unitName": "Matriz São Paulo",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "RH"
+    },
+    {
+      "id": "area-5",
+      "tenantId": "tenant-1",
+      "name": "Tecnologia",
+      "description": "",
+      "unitId": "unit-1",
+      "unitName": "Matriz São Paulo",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "TI"
+    }
+  ],
+  "organizationDisciplines": [
+    {
+      "id": "disc-1",
+      "tenantId": "tenant-1",
+      "name": "Direito Contratual",
+      "description": "Contratos e acordos",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "DIR-CON"
+    },
+    {
+      "id": "disc-2",
+      "tenantId": "tenant-1",
+      "name": "Direito Trabalhista",
+      "description": "Relações de trabalho",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "DIR-TRB"
+    },
+    {
+      "id": "disc-3",
+      "tenantId": "tenant-1",
+      "name": "Suprimentos",
+      "description": "Aquisição de bens e serviços",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "SUP"
+    },
+    {
+      "id": "disc-4",
+      "tenantId": "tenant-1",
+      "name": "Controle Financeiro",
+      "description": "Orçamento e controlling",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "CTL"
+    },
+    {
+      "id": "disc-5",
+      "tenantId": "tenant-1",
+      "name": "Gestão de Pessoas",
+      "description": "Recrutamento e desenvolvimento",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "GP"
+    },
+    {
+      "id": "disc-6",
+      "tenantId": "tenant-1",
+      "name": "Engenharia de Software",
+      "description": "Desenvolvimento de sistemas",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "ENG-SW"
+    }
+  ],
+  "organizationRoles": [
+    {
+      "id": "role-1",
+      "tenantId": "tenant-1",
+      "name": "Advogado Sênior",
+      "description": "Responsável por revisões jurídicas",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "ADV-SR"
+    },
+    {
+      "id": "role-2",
+      "tenantId": "tenant-1",
+      "name": "Advogado Trabalhista",
+      "description": "Especialista em CLT e acordos",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "ADV-TRB"
+    },
+    {
+      "id": "role-3",
+      "tenantId": "tenant-1",
+      "name": "Analista de Compras",
+      "description": "",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "ANA-COM"
+    },
+    {
+      "id": "role-4",
+      "tenantId": "tenant-1",
+      "name": "Gerente de Compras",
+      "description": "",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "GER-COM"
+    },
+    {
+      "id": "role-5",
+      "tenantId": "tenant-1",
+      "name": "Controller",
+      "description": "",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "CTL"
+    },
+    {
+      "id": "role-6",
+      "tenantId": "tenant-1",
+      "name": "HRBP",
+      "description": "",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "HRBP"
+    },
+    {
+      "id": "role-7",
+      "tenantId": "tenant-1",
+      "name": "Desenvolvedor Sênior",
+      "description": "",
+      "isActive": true,
+      "createdAt": "2024-01-10T08:00:00Z",
+      "code": "DEV-SR"
+    }
+  ],
   "documentInstances": [
     {
       "id": "doc-1",
@@ -230,7 +508,6 @@
       "dueDate": "2024-10-30T23:59:00Z"
     }
   ],
-
   "tasks": [
     {
       "id": "task-1",
@@ -243,7 +520,11 @@
       "assignedUserId": "user-1",
       "assignedUserName": "Carlos Mendes",
       "status": "pending",
-      "allowedActions": ["approve", "reject", "return"],
+      "allowedActions": [
+        "approve",
+        "reject",
+        "return"
+      ],
       "dueDate": "2024-11-08T23:59:00Z",
       "createdAt": "2024-11-05T14:30:00Z",
       "completedAt": null,
@@ -260,7 +541,10 @@
       "assignedUserId": "user-3",
       "assignedUserName": "Ricardo Alves",
       "status": "pending",
-      "allowedActions": ["approve", "cancel"],
+      "allowedActions": [
+        "approve",
+        "cancel"
+      ],
       "dueDate": "2024-11-07T23:59:00Z",
       "createdAt": "2024-11-05T10:00:00Z",
       "completedAt": null,
@@ -284,7 +568,6 @@
       "comment": "Publicado com sucesso."
     }
   ],
-
   "workflows": [
     {
       "id": "wf-1",
@@ -295,108 +578,426 @@
       "createdAt": "2024-01-20T08:00:00Z",
       "steps": [
         {
-          "id": "step-1", "name": "Solicitação", "description": "Abertura e preenchimento inicial",
-          "orderIndex": 0, "isInitial": true, "isFinal": false, "slaHours": 8,
-          "allowedActions": ["submit"], "receivesNotification": true, "requiredNotification": false,
-          "responsibles": [{ "name": "Solicitante" }],
-          "metadata": [
-            { "name": "supplier", "label": "Fornecedor", "type": "text", "required": true, "multiple": false, "options": [] },
-            { "name": "estimated_value", "label": "Valor Estimado", "type": "currency", "required": true, "multiple": false, "options": [] },
-            { "name": "contract_type", "label": "Tipo de Contrato", "type": "select", "required": true, "multiple": false, "options": ["Prestação de Serviços","Fornecimento","Locação","NDA"] }
+          "id": "step-1",
+          "name": "Solicitação",
+          "orderIndex": 0,
+          "isInitial": true,
+          "isFinal": false,
+          "slaHours": 8,
+          "allowedActions": [
+            "submit"
           ],
-          "transitions": [{ "toStepOrderIndex": 1, "triggerAction": "submit" }]
+          "responsibles": [
+            {
+              "name": "Solicitante"
+            }
+          ],
+          "metadata": [
+            {
+              "name": "supplier",
+              "label": "Fornecedor",
+              "type": "text",
+              "required": true
+            },
+            {
+              "name": "estimated_value",
+              "label": "Valor Estimado",
+              "type": "currency",
+              "required": true
+            },
+            {
+              "name": "contract_type",
+              "label": "Tipo de Contrato",
+              "type": "select",
+              "required": true,
+              "options": [
+                "Prestação de Serviços",
+                "Fornecimento",
+                "Locação",
+                "NDA"
+              ]
+            }
+          ],
+          "transitions": [
+            {
+              "toStepOrderIndex": 1,
+              "triggerAction": "submit"
+            }
+          ]
         },
         {
-          "id": "step-2", "name": "Análise Inicial", "description": "Validação dos dados",
-          "orderIndex": 1, "isInitial": false, "isFinal": false, "slaHours": 16,
-          "allowedActions": ["approve", "return"], "receivesNotification": true, "requiredNotification": true,
-          "responsibles": [{ "name": "Analista de Compras" }], "metadata": [],
-          "transitions": [{ "toStepOrderIndex": 2, "triggerAction": "approve" }, { "toStepOrderIndex": 0, "triggerAction": "return" }]
+          "id": "step-2",
+          "name": "Análise Inicial",
+          "orderIndex": 1,
+          "isInitial": false,
+          "isFinal": false,
+          "slaHours": 16,
+          "allowedActions": [
+            "approve",
+            "return"
+          ],
+          "responsibles": [
+            {
+              "name": "Analista de Compras"
+            }
+          ],
+          "metadata": [],
+          "transitions": [
+            {
+              "toStepOrderIndex": 2,
+              "triggerAction": "approve"
+            },
+            {
+              "toStepOrderIndex": 0,
+              "triggerAction": "return"
+            }
+          ]
         },
         {
-          "id": "step-3", "name": "Revisão Jurídica", "description": "Revisão de cláusulas",
-          "orderIndex": 2, "isInitial": false, "isFinal": false, "slaHours": 16,
-          "allowedActions": ["approve", "reject", "return"], "receivesNotification": true, "requiredNotification": true,
-          "responsibles": [{ "name": "Advogado Sênior" }],
-          "metadata": [{ "name": "legal_risk", "label": "Risco Jurídico", "type": "select", "required": true, "multiple": false, "options": ["Baixo","Médio","Alto","Crítico"] }],
-          "transitions": [{ "toStepOrderIndex": 3, "triggerAction": "approve" }, { "toStepOrderIndex": 0, "triggerAction": "return" }]
+          "id": "step-3",
+          "name": "Revisão Jurídica",
+          "orderIndex": 2,
+          "isInitial": false,
+          "isFinal": false,
+          "slaHours": 16,
+          "allowedActions": [
+            "approve",
+            "reject",
+            "return"
+          ],
+          "responsibles": [
+            {
+              "name": "Advogado Sênior"
+            }
+          ],
+          "metadata": [
+            {
+              "name": "legal_risk",
+              "label": "Risco Jurídico",
+              "type": "select",
+              "required": true,
+              "options": [
+                "Baixo",
+                "Médio",
+                "Alto",
+                "Crítico"
+              ]
+            }
+          ],
+          "transitions": [
+            {
+              "toStepOrderIndex": 3,
+              "triggerAction": "approve"
+            },
+            {
+              "toStepOrderIndex": 0,
+              "triggerAction": "return"
+            }
+          ]
         },
         {
-          "id": "step-4", "name": "Aprovação Gerencial", "description": "Aprovação final",
-          "orderIndex": 3, "isInitial": false, "isFinal": false, "slaHours": 8,
-          "allowedActions": ["approve", "cancel"], "receivesNotification": true, "requiredNotification": true,
-          "responsibles": [{ "name": "Gerente de Compras" }], "metadata": [],
-          "transitions": [{ "toStepOrderIndex": 4, "triggerAction": "approve" }]
+          "id": "step-4",
+          "name": "Aprovação Gerencial",
+          "orderIndex": 3,
+          "isInitial": false,
+          "isFinal": false,
+          "slaHours": 8,
+          "allowedActions": [
+            "approve",
+            "cancel"
+          ],
+          "responsibles": [
+            {
+              "name": "Gerente de Compras"
+            }
+          ],
+          "metadata": [],
+          "transitions": [
+            {
+              "toStepOrderIndex": 4,
+              "triggerAction": "approve"
+            }
+          ]
         },
         {
-          "id": "step-5", "name": "Publicação", "description": "Publicação e arquivamento",
-          "orderIndex": 4, "isInitial": false, "isFinal": true, "slaHours": null,
-          "allowedActions": ["publish"], "receivesNotification": true, "requiredNotification": false,
-          "responsibles": [], "metadata": [], "transitions": []
+          "id": "step-5",
+          "name": "Publicação",
+          "orderIndex": 4,
+          "isInitial": false,
+          "isFinal": true,
+          "slaHours": null,
+          "allowedActions": [
+            "publish"
+          ],
+          "responsibles": [],
+          "metadata": [],
+          "transitions": []
         }
       ]
     }
   ],
-
   "documentTypes": [
-    { "id": "doctype-1", "tenantId": "tenant-1", "name": "Contrato", "code": "CTR", "description": "Contratos com fornecedores e parceiros", "isActive": true, "createdAt": "2024-01-12T08:00:00Z" },
-    { "id": "doctype-2", "tenantId": "tenant-1", "name": "Pedido de Compra", "code": "PC", "description": "Solicitações e ordens de compra", "isActive": true, "createdAt": "2024-01-12T08:00:00Z" },
-    { "id": "doctype-3", "tenantId": "tenant-1", "name": "Documento de RH", "code": "RH", "description": "Admissões, demissões, férias e outros", "isActive": true, "createdAt": "2024-01-12T08:00:00Z" },
-    { "id": "doctype-4", "tenantId": "tenant-1", "name": "Relatório Técnico", "code": "RT", "description": "Relatórios e laudos técnicos", "isActive": false, "createdAt": "2024-02-01T08:00:00Z" }
+    {
+      "id": "doctype-1",
+      "tenantId": "tenant-1",
+      "name": "Contrato",
+      "code": "CTR",
+      "description": "Contratos com fornecedores e parceiros",
+      "isActive": true,
+      "createdAt": "2024-01-12T08:00:00Z"
+    },
+    {
+      "id": "doctype-2",
+      "tenantId": "tenant-1",
+      "name": "Pedido de Compra",
+      "code": "PC",
+      "description": "Solicitações e ordens de compra",
+      "isActive": true,
+      "createdAt": "2024-01-12T08:00:00Z"
+    },
+    {
+      "id": "doctype-3",
+      "tenantId": "tenant-1",
+      "name": "Documento de RH",
+      "code": "RH",
+      "description": "Admissões, demissões, férias e outros",
+      "isActive": true,
+      "createdAt": "2024-01-12T08:00:00Z"
+    },
+    {
+      "id": "doctype-4",
+      "tenantId": "tenant-1",
+      "name": "Relatório Técnico",
+      "code": "RT",
+      "description": "Relatórios e laudos técnicos",
+      "isActive": false,
+      "createdAt": "2024-02-01T08:00:00Z"
+    }
   ],
-
   "metadataSets": [
-    { "id": "mset-1", "tenantId": "tenant-1", "name": "Dados do Contrato", "code": "contract_data", "description": "Campos para contratos", "isActive": true, "orderIndex": 1 },
-    { "id": "mset-2", "tenantId": "tenant-1", "name": "Dados de Compra", "code": "purchase_data", "description": "Campos para pedidos de compra", "isActive": true, "orderIndex": 2 }
+    {
+      "id": "mset-1",
+      "tenantId": "tenant-1",
+      "name": "Dados do Contrato",
+      "code": "contract_data",
+      "description": "Campos para contratos",
+      "isActive": true,
+      "orderIndex": 1
+    },
+    {
+      "id": "mset-2",
+      "tenantId": "tenant-1",
+      "name": "Dados de Compra",
+      "code": "purchase_data",
+      "description": "Campos para pedidos de compra",
+      "isActive": true,
+      "orderIndex": 2
+    }
   ],
-
   "metadataDefinitions": [
-    { "id": "mdef-1", "tenantId": "tenant-1", "metadataSetId": "mset-1", "metadataSetName": "Dados do Contrato", "name": "supplier", "label": "Fornecedor / Contraparte", "fieldType": "text", "isRequired": true, "isActive": true, "orderIndex": 1, "options": [] },
-    { "id": "mdef-2", "tenantId": "tenant-1", "metadataSetId": "mset-1", "metadataSetName": "Dados do Contrato", "name": "estimated_value", "label": "Valor Estimado", "fieldType": "currency", "isRequired": true, "isActive": true, "orderIndex": 2, "options": [] },
-    { "id": "mdef-3", "tenantId": "tenant-1", "metadataSetId": "mset-1", "metadataSetName": "Dados do Contrato", "name": "contract_type", "label": "Tipo de Contrato", "fieldType": "select", "isRequired": true, "isActive": true, "orderIndex": 3, "options": [{ "value": "service", "label": "Prestação de Serviços" }, { "value": "supply", "label": "Fornecimento de Produtos" }, { "value": "rental", "label": "Locação" }, { "value": "nda", "label": "NDA / Confidencialidade" }] },
-    { "id": "mdef-4", "tenantId": "tenant-1", "metadataSetId": "mset-1", "metadataSetName": "Dados do Contrato", "name": "validity_start", "label": "Início da Vigência", "fieldType": "date", "isRequired": true, "isActive": true, "orderIndex": 4, "options": [] },
-    { "id": "mdef-5", "tenantId": "tenant-1", "metadataSetId": "mset-1", "metadataSetName": "Dados do Contrato", "name": "validity_end", "label": "Fim da Vigência", "fieldType": "date", "isRequired": false, "isActive": true, "orderIndex": 5, "options": [] },
-    { "id": "mdef-6", "tenantId": "tenant-1", "metadataSetId": "mset-1", "metadataSetName": "Dados do Contrato", "name": "legal_risk", "label": "Risco Jurídico", "fieldType": "select", "isRequired": false, "isActive": true, "orderIndex": 6, "options": [{ "value": "low", "label": "Baixo" }, { "value": "medium", "label": "Médio" }, { "value": "high", "label": "Alto" }, { "value": "critical", "label": "Crítico" }] },
-    { "id": "mdef-7", "tenantId": "tenant-1", "metadataSetId": "mset-2", "metadataSetName": "Dados de Compra", "name": "item_description", "label": "Descrição do Item", "fieldType": "text", "isRequired": true, "isActive": true, "orderIndex": 1, "options": [] },
-    { "id": "mdef-8", "tenantId": "tenant-1", "metadataSetId": "mset-2", "metadataSetName": "Dados de Compra", "name": "quantity", "label": "Quantidade", "fieldType": "number", "isRequired": true, "isActive": true, "orderIndex": 2, "options": [] }
+    {
+      "id": "mdef-1",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-1",
+      "metadataSetName": "Dados do Contrato",
+      "name": "supplier",
+      "label": "Fornecedor / Contraparte",
+      "fieldType": "text",
+      "isRequired": true,
+      "isActive": true,
+      "orderIndex": 1,
+      "options": []
+    },
+    {
+      "id": "mdef-2",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-1",
+      "metadataSetName": "Dados do Contrato",
+      "name": "estimated_value",
+      "label": "Valor Estimado",
+      "fieldType": "currency",
+      "isRequired": true,
+      "isActive": true,
+      "orderIndex": 2,
+      "options": []
+    },
+    {
+      "id": "mdef-3",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-1",
+      "metadataSetName": "Dados do Contrato",
+      "name": "contract_type",
+      "label": "Tipo de Contrato",
+      "fieldType": "select",
+      "isRequired": true,
+      "isActive": true,
+      "orderIndex": 3,
+      "options": [
+        {
+          "value": "service",
+          "label": "Prestação de Serviços"
+        },
+        {
+          "value": "supply",
+          "label": "Fornecimento de Produtos"
+        },
+        {
+          "value": "rental",
+          "label": "Locação"
+        },
+        {
+          "value": "nda",
+          "label": "NDA / Confidencialidade"
+        }
+      ]
+    },
+    {
+      "id": "mdef-4",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-1",
+      "metadataSetName": "Dados do Contrato",
+      "name": "validity_start",
+      "label": "Início da Vigência",
+      "fieldType": "date",
+      "isRequired": true,
+      "isActive": true,
+      "orderIndex": 4,
+      "options": []
+    },
+    {
+      "id": "mdef-5",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-1",
+      "metadataSetName": "Dados do Contrato",
+      "name": "validity_end",
+      "label": "Fim da Vigência",
+      "fieldType": "date",
+      "isRequired": false,
+      "isActive": true,
+      "orderIndex": 5,
+      "options": []
+    },
+    {
+      "id": "mdef-6",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-1",
+      "metadataSetName": "Dados do Contrato",
+      "name": "legal_risk",
+      "label": "Risco Jurídico",
+      "fieldType": "select",
+      "isRequired": false,
+      "isActive": true,
+      "orderIndex": 6,
+      "options": [
+        {
+          "value": "low",
+          "label": "Baixo"
+        },
+        {
+          "value": "medium",
+          "label": "Médio"
+        },
+        {
+          "value": "high",
+          "label": "Alto"
+        },
+        {
+          "value": "critical",
+          "label": "Crítico"
+        }
+      ]
+    },
+    {
+      "id": "mdef-7",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-2",
+      "metadataSetName": "Dados de Compra",
+      "name": "item_description",
+      "label": "Descrição do Item",
+      "fieldType": "text",
+      "isRequired": true,
+      "isActive": true,
+      "orderIndex": 1,
+      "options": []
+    },
+    {
+      "id": "mdef-8",
+      "tenantId": "tenant-1",
+      "metadataSetId": "mset-2",
+      "metadataSetName": "Dados de Compra",
+      "name": "quantity",
+      "label": "Quantidade",
+      "fieldType": "number",
+      "isRequired": true,
+      "isActive": true,
+      "orderIndex": 2,
+      "options": []
+    }
   ],
-
   "metadataValues": [
-    { "id": "mval-1", "documentInstanceId": "doc-1", "metadataDefinitionId": "mdef-1", "name": "supplier", "label": "Fornecedor / Contraparte", "fieldType": "text", "isRequired": true, "value": "Infra Corp Tecnologia LTDA" },
-    { "id": "mval-2", "documentInstanceId": "doc-1", "metadataDefinitionId": "mdef-2", "name": "estimated_value", "label": "Valor Estimado", "fieldType": "currency", "isRequired": true, "value": 48000.00 },
-    { "id": "mval-3", "documentInstanceId": "doc-1", "metadataDefinitionId": "mdef-3", "name": "contract_type", "label": "Tipo de Contrato", "fieldType": "select", "isRequired": true, "value": "service" },
-    { "id": "mval-4", "documentInstanceId": "doc-2", "metadataDefinitionId": "mdef-1", "name": "supplier", "label": "Fornecedor / Contraparte", "fieldType": "text", "isRequired": true, "value": "Deloitte Consultores Ltda" },
-    { "id": "mval-5", "documentInstanceId": "doc-2", "metadataDefinitionId": "mdef-2", "name": "estimated_value", "label": "Valor Estimado", "fieldType": "currency", "isRequired": true, "value": 120000.00 }
+    {
+      "id": "mval-1",
+      "documentInstanceId": "doc-1",
+      "metadataDefinitionId": "mdef-1",
+      "name": "supplier",
+      "label": "Fornecedor / Contraparte",
+      "fieldType": "text",
+      "isRequired": true,
+      "value": "Infra Corp Tecnologia LTDA"
+    },
+    {
+      "id": "mval-2",
+      "documentInstanceId": "doc-1",
+      "metadataDefinitionId": "mdef-2",
+      "name": "estimated_value",
+      "label": "Valor Estimado",
+      "fieldType": "currency",
+      "isRequired": true,
+      "value": 48000.0
+    },
+    {
+      "id": "mval-3",
+      "documentInstanceId": "doc-1",
+      "metadataDefinitionId": "mdef-3",
+      "name": "contract_type",
+      "label": "Tipo de Contrato",
+      "fieldType": "select",
+      "isRequired": true,
+      "value": "service"
+    },
+    {
+      "id": "mval-4",
+      "documentInstanceId": "doc-2",
+      "metadataDefinitionId": "mdef-1",
+      "name": "supplier",
+      "label": "Fornecedor / Contraparte",
+      "fieldType": "text",
+      "isRequired": true,
+      "value": "Deloitte Consultores Ltda"
+    },
+    {
+      "id": "mval-5",
+      "documentInstanceId": "doc-2",
+      "metadataDefinitionId": "mdef-2",
+      "name": "estimated_value",
+      "label": "Valor Estimado",
+      "fieldType": "currency",
+      "isRequired": true,
+      "value": 120000.0
+    }
   ],
-
-  "organizationUnits": [
-    { "id": "unit-1", "tenantId": "tenant-1", "name": "Matriz São Paulo", "description": "Sede principal", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "unit-2", "tenantId": "tenant-1", "name": "Filial Rio de Janeiro", "description": "", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "unit-3", "tenantId": "tenant-1", "name": "Filial Curitiba", "description": "", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" }
-  ],
-
-  "organizationAreas": [
-    { "id": "area-1", "tenantId": "tenant-1", "name": "Jurídico", "description": "", "unitId": "unit-1", "unitName": "Matriz São Paulo", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "area-2", "tenantId": "tenant-1", "name": "Compras", "description": "", "unitId": "unit-1", "unitName": "Matriz São Paulo", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "area-3", "tenantId": "tenant-1", "name": "Financeiro", "description": "", "unitId": "unit-1", "unitName": "Matriz São Paulo", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "area-4", "tenantId": "tenant-1", "name": "RH", "description": "", "unitId": "unit-1", "unitName": "Matriz São Paulo", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "area-5", "tenantId": "tenant-1", "name": "Tecnologia", "description": "", "unitId": "unit-1", "unitName": "Matriz São Paulo", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" }
-  ],
-
-  "organizationRoles": [
-    { "id": "role-1", "tenantId": "tenant-1", "name": "Advogado Sênior", "description": "Responsável por revisões jurídicas", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "role-2", "tenantId": "tenant-1", "name": "Analista de Compras", "description": "", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "role-3", "tenantId": "tenant-1", "name": "Gerente de Compras", "description": "", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "role-4", "tenantId": "tenant-1", "name": "Controller", "description": "", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" },
-    { "id": "role-5", "tenantId": "tenant-1", "name": "HRBP", "description": "", "isActive": true, "createdAt": "2024-01-10T08:00:00Z" }
-  ],
-
   "dashboard": [
     {
       "id": "summary",
       "tenantId": "tenant-1",
       "totalDocuments": 5,
-      "byStatus": { "draft": 1, "in_progress": 2, "published": 1, "rejected": 1, "cancelled": 0 },
+      "byStatus": {
+        "draft": 1,
+        "in_progress": 2,
+        "published": 1,
+        "rejected": 1,
+        "cancelled": 0
+      },
       "pendingTasks": 2,
       "overdueTasks": 1,
       "slaCompliance": 78

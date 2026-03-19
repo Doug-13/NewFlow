@@ -10,6 +10,7 @@ import {
   MOCK_METADATA_VALUES,
   MOCK_ORGANIZATION_UNITS,
   MOCK_ORGANIZATION_AREAS,
+  MOCK_ORGANIZATION_DISCIPLINES, // ← adicionado
   MOCK_ORGANIZATION_ROLES,
   MOCK_USERS,
   MOCK_DASHBOARD,
@@ -18,17 +19,18 @@ import {
 // ─── Estado em memória ────────────────────────────────────────────────────────
 
 const db = {
-  'document-instances':   structuredClone(MOCK_DOCUMENT_INSTANCES) as any[],
-  'tasks':                structuredClone(MOCK_TASKS) as any[],
-  'workflows':            structuredClone(MOCK_WORKFLOWS) as any[],
-  'document-types':       structuredClone(MOCK_DOCUMENT_TYPES) as any[],
-  'metadata/sets':        structuredClone(MOCK_METADATA_SETS) as any[],
-  'metadata/definitions': structuredClone(MOCK_METADATA_DEFINITIONS) as any[],
-  'metadata/values':      structuredClone(MOCK_METADATA_VALUES) as any[],
-  'organization/units':   structuredClone(MOCK_ORGANIZATION_UNITS) as any[],
-  'organization/areas':   structuredClone(MOCK_ORGANIZATION_AREAS) as any[],
-  'organization/roles':   structuredClone(MOCK_ORGANIZATION_ROLES) as any[],
-  'users':                structuredClone(MOCK_USERS) as any[],
+  'document-instances':        structuredClone(MOCK_DOCUMENT_INSTANCES) as any[],
+  'tasks':                     structuredClone(MOCK_TASKS) as any[],
+  'workflows':                 structuredClone(MOCK_WORKFLOWS) as any[],
+  'document-types':            structuredClone(MOCK_DOCUMENT_TYPES) as any[],
+  'metadata/sets':             structuredClone(MOCK_METADATA_SETS) as any[],
+  'metadata/definitions':      structuredClone(MOCK_METADATA_DEFINITIONS) as any[],
+  'metadata/values':           structuredClone(MOCK_METADATA_VALUES) as any[],
+  'organization/units':        structuredClone(MOCK_ORGANIZATION_UNITS) as any[],
+  'organization/areas':        structuredClone(MOCK_ORGANIZATION_AREAS) as any[],
+  'organization/disciplines':  structuredClone(MOCK_ORGANIZATION_DISCIPLINES) as any[], // ← adicionado
+  'organization/roles':        structuredClone(MOCK_ORGANIZATION_ROLES) as any[],
+  'users':                     structuredClone(MOCK_USERS) as any[],
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -69,8 +71,8 @@ function resolveCollection(url: string): { key: keyof typeof db; id?: string } |
   const metaSetMatch = url.match(/^\/metadata\/sets(?:\/(.+))?$/)
   if (metaSetMatch) return { key: 'metadata/sets', id: metaSetMatch[1] }
 
-  // /organization/units|areas|roles/:id
-  const orgMatch = url.match(/^\/(organization\/(?:units|areas|roles))(?:\/(.+))?$/)
+  // /organization/units|areas|disciplines|roles/:id  ← disciplines adicionado
+  const orgMatch = url.match(/^\/(organization\/(?:units|areas|disciplines|roles))(?:\/(.+))?$/)
   if (orgMatch) return { key: orgMatch[1] as keyof typeof db, id: orgMatch[2] }
 
   // /document-instances/:id/... (ignora sub-rotas como /files, /cancel)
@@ -184,6 +186,7 @@ export function installMockAdapter(instance: AxiosInstance) {
       const newItem = {
         id: generateId(),
         createdAt: new Date().toISOString(),
+        isActive: true,
         ...body,
       }
       collection.push(newItem)
