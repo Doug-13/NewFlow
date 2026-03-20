@@ -1,51 +1,29 @@
-// src/api/mockAdapter.ts
-import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
-import {
-  MOCK_DOCUMENT_INSTANCES,
-  MOCK_TASKS,
-  MOCK_WORKFLOWS,
-  MOCK_DOCUMENT_TYPES,
-  MOCK_METADATA_SETS,
-  MOCK_METADATA_DEFINITIONS,
-  MOCK_METADATA_VALUES,
-  MOCK_ORGANIZATION_UNITS,
-  MOCK_ORGANIZATION_AREAS,
-  MOCK_ORGANIZATION_DISCIPLINES, // ← adicionado
-  MOCK_ORGANIZATION_ROLES,
-  MOCK_USERS,
-  MOCK_DASHBOARD,
-} from './mockData'
+import type {
+  AxiosInstance,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from 'axios'
+import { getMockDb, saveMockDb } from './mockDb'
 
-// ─── Estado em memória ────────────────────────────────────────────────────────
-
-const db = {
-  'document-instances':        structuredClone(MOCK_DOCUMENT_INSTANCES) as any[],
-  'tasks':                     structuredClone(MOCK_TASKS) as any[],
-  'workflows':                 structuredClone(MOCK_WORKFLOWS) as any[],
-  'document-types':            structuredClone(MOCK_DOCUMENT_TYPES) as any[],
-  'metadata/sets':             structuredClone(MOCK_METADATA_SETS) as any[],
-  'metadata/definitions':      structuredClone(MOCK_METADATA_DEFINITIONS) as any[],
-  'metadata/values':           structuredClone(MOCK_METADATA_VALUES) as any[],
-  'organization/units':        structuredClone(MOCK_ORGANIZATION_UNITS) as any[],
-  'organization/areas':        structuredClone(MOCK_ORGANIZATION_AREAS) as any[],
-  'organization/disciplines':  structuredClone(MOCK_ORGANIZATION_DISCIPLINES) as any[], // ← adicionado
-  'organization/roles':        structuredClone(MOCK_ORGANIZATION_ROLES) as any[],
-  'users':                     structuredClone(MOCK_USERS) as any[],
+function clone<T>(value: T): T {
+  return structuredClone(value)
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseBody(data: unknown): Record<string, unknown> {
   if (!data) return {}
   if (typeof data === 'object') return data as Record<string, unknown>
   if (typeof data === 'string') {
-    try { return JSON.parse(data) } catch { return {} }
+    try {
+      return JSON.parse(data) as Record<string, unknown>
+    } catch {
+      return {}
+    }
   }
   return {}
 }
 
-function generateId() {
-  return `mock-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+function generateId(prefix = 'mock') {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
 function makeResponse(data: unknown, status = 200): AxiosResponse {
@@ -58,179 +36,287 @@ function makeResponse(data: unknown, status = 200): AxiosResponse {
   }
 }
 
-function resolveCollection(url: string): { key: keyof typeof db; id?: string } | null {
-  // /metadata/values/:documentInstanceId
-  const metaValMatch = url.match(/^\/metadata\/values(?:\/(.+))?$/)
-  if (metaValMatch) return { key: 'metadata/values', id: metaValMatch[1] }
+type RouteResolution =
+  | { collection: keyof ReturnType<typeof getMockDb>; id?: string; action?: string }
+  | null
 
-  // /metadata/definitions/:id
-  const metaDefMatch = url.match(/^\/metadata\/definitions(?:\/(.+))?$/)
-  if (metaDefMatch) return { key: 'metadata/definitions', id: metaDefMatch[1] }
+function resolveRoute(rawUrl: string): RouteResolution {
+  const url = rawUrl.split('?')[0]
 
-  // /metadata/sets/:id
-  const metaSetMatch = url.match(/^\/metadata\/sets(?:\/(.+))?$/)
-  if (metaSetMatch) return { key: 'metadata/sets', id: metaSetMatch[1] }
+  if (url === '/dashboard/summary') {
+    return { collection: 'dashboard' }
+  }
 
-  // /organization/units|areas|disciplines|roles/:id  ← disciplines adicionado
-  const orgMatch = url.match(/^\/(organization\/(?:units|areas|disciplines|roles))(?:\/(.+))?$/)
-  if (orgMatch) return { key: orgMatch[1] as keyof typeof db, id: orgMatch[2] }
+  const routes: Array<[RegExp, keyof ReturnType<typeof getMockDb>]> = [
+    [/^\/platformAdmins(?:\/(.+))?$/, 'platformAdmins'],
+    [/^\/users(?:\/(.+))?$/, 'users'],
+    [/^\/tenantModules(?:\/(.+))?$/, 'tenantModules'],
+    [/^\/organizationUnits(?:\/(.+))?$/, 'organizationUnits'],
+    [/^\/organizationAreas(?:\/(.+))?$/, 'organizationAreas'],
+    [/^\/organizationDisciplines(?:\/(.+))?$/, 'organizationDisciplines'],
+    [/^\/organizationRoles(?:\/(.+))?$/, 'organizationRoles'],
+    [/^\/documentInstances(?:\/(.+))?$/, 'documentInstances'],
+    [/^\/tasks(?:\/(.+))?$/, 'tasks'],
+    [/^\/workflows(?:\/(.+))?$/, 'workflows'],
+    [/^\/documentTypes(?:\/(.+))?$/, 'documentTypes'],
+    [/^\/metadataSets(?:\/(.+))?$/, 'metadataSets'],
+    [/^\/metadataDefinitions(?:\/(.+))?$/, 'metadataDefinitions'],
+    [/^\/metadataValues(?:\/(.+))?$/, 'metadataValues'],
+    [/^\/notificationTemplates(?:\/(.+))?$/, 'notificationTemplates'],
+    [/^\/dashboard(?:\/(.+))?$/, 'dashboard'],
 
-  // /document-instances/:id/... (ignora sub-rotas como /files, /cancel)
-  const docMatch = url.match(/^\/document-instances(?:\/([^/]+))?(?:\/.*)?$/)
-  if (docMatch) return { key: 'document-instances', id: docMatch[1] }
+    // aliases legados
+    [/^\/organization\/units(?:\/(.+))?$/, 'organizationUnits'],
+    [/^\/organization\/areas(?:\/(.+))?$/, 'organizationAreas'],
+    [/^\/organization\/disciplines(?:\/(.+))?$/, 'organizationDisciplines'],
+    [/^\/organization\/roles(?:\/(.+))?$/, 'organizationRoles'],
+    [/^\/document-instances(?:\/(.+))?$/, 'documentInstances'],
+    [/^\/document-types(?:\/(.+))?$/, 'documentTypes'],
+    [/^\/metadata\/sets(?:\/(.+))?$/, 'metadataSets'],
+    [/^\/metadata\/definitions(?:\/(.+))?$/, 'metadataDefinitions'],
+    [/^\/metadata\/values(?:\/(.+))?$/, 'metadataValues'],
+    [/^\/notification-templates(?:\/(.+))?$/, 'notificationTemplates'],
+    [/^\/tenant-modules(?:\/(.+))?$/, 'tenantModules'],
+    [/^\/platform-admins(?:\/(.+))?$/, 'platformAdmins'],
+  ]
 
-  // /tasks/:id/execute (ignora sub-rota)
-  const taskMatch = url.match(/^\/tasks(?:\/([^/]+))?(?:\/.*)?$/)
-  if (taskMatch) return { key: 'tasks', id: taskMatch[1] }
+  if (/^\/tasks\/[^/]+\/execute$/.test(url)) {
+    const taskId = url.split('/')[2]
+    return { collection: 'tasks', id: taskId, action: 'execute' }
+  }
 
-  // /workflows/:id
-  const wfMatch = url.match(/^\/workflows(?:\/(.+))?$/)
-  if (wfMatch) return { key: 'workflows', id: wfMatch[1] }
+  if (/^\/document-instances\/[^/]+\/cancel$/.test(url) || /^\/documentInstances\/[^/]+\/cancel$/.test(url)) {
+    const documentId = url.split('/')[2]
+    return { collection: 'documentInstances', id: documentId, action: 'cancel' }
+  }
 
-  // /document-types/:id
-  const dtMatch = url.match(/^\/document-types(?:\/(.+))?$/)
-  if (dtMatch) return { key: 'document-types', id: dtMatch[1] }
+  if (/^\/metadata\/values\/[^/]+$/.test(url) || /^\/metadataValues\/[^/]+$/.test(url)) {
+    const documentInstanceId = url.split('/')[3] ?? url.split('/')[2]
+    return { collection: 'metadataValues', id: documentInstanceId, action: 'byDocument' }
+  }
 
-  // /users/:id
-  const userMatch = url.match(/^\/users(?:\/(.+))?$/)
-  if (userMatch) return { key: 'users', id: userMatch[1] }
+  for (const [pattern, collection] of routes) {
+    const match = url.match(pattern)
+    if (match) {
+      return {
+        collection,
+        id: match[1],
+      }
+    }
+  }
 
   return null
 }
-
-// ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export function installMockAdapter(instance: AxiosInstance) {
   instance.interceptors.request.use((config): never => {
     const url = config.url ?? ''
     const method = (config.method ?? 'get').toLowerCase()
     const params = config.params ?? {}
+    const resolved = resolveRoute(url)
 
-    // ── Dashboard ──────────────────────────────────────────────────────────
-    if (url.includes('dashboard/summary')) {
-      throw { isMockResponse: true, response: makeResponse(MOCK_DASHBOARD) }
-    }
-
-    const resolved = resolveCollection(url)
     if (!resolved) {
       throw { isMockResponse: true, response: makeResponse([]) }
     }
 
-    const { key, id } = resolved
-    const collection = db[key]
+    const db = getMockDb()
 
-    // ── GET ────────────────────────────────────────────────────────────────
+    if (url.includes('dashboard/summary')) {
+      throw { isMockResponse: true, response: makeResponse(db.dashboard[0] ?? null) }
+    }
+
+    const { collection, id, action } = resolved
+    const items = clone(db[collection]) as Array<Record<string, unknown>>
+
     if (method === 'get') {
-      // /metadata/values/:documentInstanceId — filtra por documentInstanceId
-      if (key === 'metadata/values' && id) {
-        const filtered = collection.filter((i: any) => i.documentInstanceId === id)
+      if (collection === 'metadataValues' && action === 'byDocument' && id) {
+        const filtered = items.filter((item) => item.documentInstanceId === id)
         throw { isMockResponse: true, response: makeResponse(filtered) }
       }
 
-      // GET por ID
       if (id) {
-        const item = collection.find((i: any) => i.id === id)
-        if (!item) throw { isMockResponse: true, response: makeResponse(null, 404) }
+        const item = items.find((entry) => String(entry.id) === id)
+        if (!item) {
+          throw { isMockResponse: true, response: makeResponse({ message: 'Registro não encontrado' }, 404) }
+        }
         throw { isMockResponse: true, response: makeResponse(item) }
       }
 
-      // GET lista com filtros por query params
-      let result = [...collection]
-      Object.entries(params).forEach(([k, v]) => {
-        if (v !== undefined && v !== null && v !== '') {
-          result = result.filter((i: any) => String(i[k]) === String(v))
-        }
+      let result = [...items]
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return
+        result = result.filter((entry) => String(entry[key]) === String(value))
       })
+
       throw { isMockResponse: true, response: makeResponse(result) }
     }
 
-    // ── POST ───────────────────────────────────────────────────────────────
     if (method === 'post') {
-      // /tasks/:id/execute — simula execução de ação
-      if (url.includes('/execute')) {
-        throw { isMockResponse: true, response: makeResponse({ success: true }) }
-      }
-
-      // /document-instances/:id/cancel
-      if (url.includes('/cancel') && id) {
-        const idx = collection.findIndex((i: any) => i.id === id)
-        if (idx !== -1) collection[idx] = { ...collection[idx], status: 'cancelled' }
-        throw { isMockResponse: true, response: makeResponse({ success: true }) }
-      }
-
-      // /metadata/values/:documentInstanceId — salva valores
-      if (key === 'metadata/values' && id) {
+      if (collection === 'tasks' && action === 'execute' && id) {
         const body = parseBody(config.data)
-        const values = (body.values ?? []) as any[]
-        values.forEach((v: any) => {
-          const idx = collection.findIndex(
-            (i: any) =>
-              i.documentInstanceId === id &&
-              i.metadataDefinitionId === v.metadataDefinitionId
+        const taskIndex = db.tasks.findIndex((task) => task.id === id)
+
+        if (taskIndex < 0) {
+          throw { isMockResponse: true, response: makeResponse({ message: 'Tarefa não encontrada' }, 404) }
+        }
+
+        const now = new Date().toISOString()
+        const actionName = String(body.action ?? '')
+        db.tasks[taskIndex] = {
+          ...db.tasks[taskIndex],
+          status: 'completed',
+          completedAt: now,
+          comment: body.comment ? String(body.comment) : null,
+          allowedActions: [],
+        }
+
+        const documentIndex = db.documentInstances.findIndex(
+          (document) => document.id === db.tasks[taskIndex].documentInstanceId
+        )
+
+        if (documentIndex >= 0) {
+          const nextStatus =
+            actionName === 'reject'
+              ? 'rejected'
+              : actionName === 'cancel'
+                ? 'cancelled'
+                : actionName === 'publish'
+                  ? 'published'
+                  : 'in_progress'
+
+          db.documentInstances[documentIndex] = {
+            ...db.documentInstances[documentIndex],
+            status: nextStatus,
+            updatedAt: now,
+          }
+        }
+
+        saveMockDb(db)
+        throw { isMockResponse: true, response: makeResponse({ success: true }) }
+      }
+
+      if (collection === 'documentInstances' && action === 'cancel' && id) {
+        const documentIndex = db.documentInstances.findIndex((document) => document.id === id)
+
+        if (documentIndex < 0) {
+          throw { isMockResponse: true, response: makeResponse({ message: 'Documento não encontrado' }, 404) }
+        }
+
+        db.documentInstances[documentIndex] = {
+          ...db.documentInstances[documentIndex],
+          status: 'cancelled',
+          updatedAt: new Date().toISOString(),
+        }
+
+        saveMockDb(db)
+        throw { isMockResponse: true, response: makeResponse({ success: true }) }
+      }
+
+      if (collection === 'metadataValues' && action === 'byDocument' && id) {
+        const body = parseBody(config.data)
+        const values = Array.isArray(body.values) ? body.values : []
+
+        values.forEach((incomingValue) => {
+          const payload = incomingValue as Record<string, unknown>
+          const metadataDefinitionId = String(payload.metadataDefinitionId ?? '')
+          const currentIndex = db.metadataValues.findIndex(
+            (item) =>
+              item.documentInstanceId === id &&
+              item.metadataDefinitionId === metadataDefinitionId
           )
-          if (idx !== -1) {
-            collection[idx] = { ...collection[idx], value: v.value }
-          } else {
-            collection.push({
-              id: generateId(),
+
+          if (currentIndex >= 0) {
+            db.metadataValues[currentIndex] = {
+              ...db.metadataValues[currentIndex],
+              ...payload,
               documentInstanceId: id,
-              ...v,
+            }
+          } else {
+            db.metadataValues.push({
+              id: generateId('mval'),
+              documentInstanceId: id,
+              metadataDefinitionId,
+              name: String(payload.name ?? ''),
+              label: String(payload.label ?? ''),
+              fieldType: String(payload.fieldType ?? 'text'),
+              isRequired: Boolean(payload.isRequired),
+              value: payload.value,
             })
           }
         })
+
+        saveMockDb(db)
         throw { isMockResponse: true, response: makeResponse({ success: true }) }
       }
 
-      // POST genérico — cria item
       const body = parseBody(config.data)
       const newItem = {
-        id: generateId(),
+        id: generateId(String(collection).slice(0, 4)),
         createdAt: new Date().toISOString(),
         isActive: true,
         ...body,
       }
-      collection.push(newItem)
+
+      const nextDb = {
+        ...db,
+        [collection]: [...db[collection], newItem],
+      }
+      saveMockDb(nextDb)
       throw { isMockResponse: true, response: makeResponse(newItem, 201) }
     }
 
-    // ── PUT ────────────────────────────────────────────────────────────────
-    if (method === 'put' && id) {
-      const body = parseBody(config.data)
-      const idx = collection.findIndex((i: any) => i.id === id)
-      if (idx !== -1) {
-        collection[idx] = { ...collection[idx], ...body }
-        throw { isMockResponse: true, response: makeResponse(collection[idx]) }
+    if (method === 'put' || method === 'patch') {
+      if (!id) {
+        throw { isMockResponse: true, response: makeResponse({ message: 'ID obrigatório' }, 400) }
       }
-      throw { isMockResponse: true, response: makeResponse(null, 404) }
+
+      const body = parseBody(config.data)
+      const currentIndex = items.findIndex((entry) => String(entry.id) === id)
+
+      if (currentIndex < 0) {
+        throw { isMockResponse: true, response: makeResponse({ message: 'Registro não encontrado' }, 404) }
+      }
+
+      const updated = {
+        ...items[currentIndex],
+        ...body,
+        updatedAt: new Date().toISOString(),
+      }
+
+      const nextItems = [...items]
+      nextItems[currentIndex] = updated
+      saveMockDb({
+        ...db,
+        [collection]: nextItems,
+      })
+
+      throw { isMockResponse: true, response: makeResponse(updated) }
     }
 
-    // ── PATCH ──────────────────────────────────────────────────────────────
-    if (method === 'patch' && id) {
-      const body = parseBody(config.data)
-      const idx = collection.findIndex((i: any) => i.id === id)
-      if (idx !== -1) {
-        collection[idx] = { ...collection[idx], ...body }
-        throw { isMockResponse: true, response: makeResponse(collection[idx]) }
+    if (method === 'delete') {
+      if (!id) {
+        throw { isMockResponse: true, response: makeResponse({ message: 'ID obrigatório' }, 400) }
       }
-      throw { isMockResponse: true, response: makeResponse(null, 404) }
-    }
 
-    // ── DELETE ─────────────────────────────────────────────────────────────
-    if (method === 'delete' && id) {
-      const idx = collection.findIndex((i: any) => i.id === id)
-      if (idx !== -1) collection.splice(idx, 1)
+      const nextItems = items.filter((entry) => String(entry.id) !== id)
+      saveMockDb({
+        ...db,
+        [collection]: nextItems,
+      })
+
       throw { isMockResponse: true, response: makeResponse({}, 204) }
     }
 
     throw { isMockResponse: true, response: makeResponse([]) }
   })
 
-  // Converte o "erro" lançado pelo interceptor de request em resposta normal
   instance.interceptors.response.use(
-    (res) => res,
-    (err) => {
-      if (err?.isMockResponse) return Promise.resolve(err.response)
-      return Promise.reject(err)
+    (response) => response,
+    (error) => {
+      if (error?.isMockResponse) {
+        return Promise.resolve(error.response)
+      }
+      return Promise.reject(error)
     }
   )
 }

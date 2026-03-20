@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -42,7 +42,7 @@ import {
 } from '@ant-design/icons'
 import { getWorkflow } from '../../api/workflows'
 import { WorkflowDiagram } from '../../components/WorkflowDiagram'
-import type { Workflow, WorkflowStep } from '../../types'
+import type { Workflow, WorkflowStep, WorkflowNodePosition } from '../../types'
 
 const { Title, Text } = Typography
 const { Panel } = Collapse
@@ -78,6 +78,12 @@ type WorkflowResponsible =
       type?: string
     }
 
+type WorkflowDetailPageProps = {
+  workflowId?: string
+  embedded?: boolean
+  onBack?: () => void
+}
+
 function getActionColor(action: string) {
   return actionColors[action?.toLowerCase?.()] ?? 'default'
 }
@@ -106,7 +112,9 @@ function getReceivesNotification(step: WorkflowStep): boolean {
     notifyResponsible?: boolean
     notificationEnabled?: boolean
   }
-  return Boolean(s.receivesNotification ?? s.notifyResponsible ?? s.notificationEnabled ?? false)
+  return Boolean(
+    s.receivesNotification ?? s.notifyResponsible ?? s.notificationEnabled ?? false,
+  )
 }
 
 function getRequiredNotification(step: WorkflowStep): boolean {
@@ -133,6 +141,7 @@ function renderMetadataTag(metadata: WorkflowMetadata) {
   if (typeof metadata === 'string') {
     return { title: metadata, subtitle: '', required: false, multiple: false }
   }
+
   return {
     title: metadata.label || metadata.name || 'Metadado sem nome',
     subtitle: metadata.type ? `Tipo: ${metadata.type}` : '',
@@ -140,8 +149,6 @@ function renderMetadataTag(metadata: WorkflowMetadata) {
     multiple: Boolean(metadata.multiple ?? false),
   }
 }
-
-// ─── Drawer de edição de etapa ───────────────────────────────────────────────
 
 type StepDrawerProps = {
   step: WorkflowStep | null
@@ -152,6 +159,19 @@ type StepDrawerProps = {
 
 function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
   const [form] = Form.useForm()
+
+  useEffect(() => {
+    if (!step || !open) return
+
+    form.setFieldsValue({
+      name: step.name,
+      description: step.description ?? '',
+      slaHours: step.slaHours ?? null,
+      isInitial: step.isInitial ?? false,
+      isFinal: step.isFinal ?? false,
+      allowedActions: step.allowedActions ?? [],
+    })
+  }, [form, open, step])
 
   if (!step) return null
 
@@ -173,8 +193,16 @@ function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
         <Space>
           <EditOutlined style={{ color: '#1677ff' }} />
           <span>Editar etapa</span>
-          {step.isInitial && <Tag color="blue" icon={<PlayCircleOutlined />}>Inicial</Tag>}
-          {step.isFinal && <Tag color="purple" icon={<StopOutlined />}>Final</Tag>}
+          {step.isInitial && (
+            <Tag color="blue" icon={<PlayCircleOutlined />}>
+              Inicial
+            </Tag>
+          )}
+          {step.isFinal && (
+            <Tag color="purple" icon={<StopOutlined />}>
+              Final
+            </Tag>
+          )}
         </Space>
       }
       open={open}
@@ -192,31 +220,25 @@ function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
     >
       <Alert
         message="Editando localmente"
-        description="As alterações feitas aqui serão aplicadas apenas na visualização atual. Para persistir, chame o endpoint de atualização do fluxo."
+        description="As alterações feitas aqui serão aplicadas na visualização atual. Para persistir, depois você pode ligar isso ao endpoint de atualização."
         type="info"
         showIcon
         icon={<InfoCircleOutlined />}
         style={{ marginBottom: 20, borderRadius: 10 }}
       />
 
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{
-          name: step.name,
-          description: step.description ?? '',
-          slaHours: step.slaHours ?? null,
-          isInitial: step.isInitial ?? false,
-          isFinal: step.isFinal ?? false,
-          allowedActions: step.allowedActions ?? [],
-        }}
-      >
+      <Form form={form} layout="vertical">
         <Collapse
-          defaultActiveKey={['basic', 'transitions', 'responsibles', 'notifications', 'metadata']}
+          defaultActiveKey={[
+            'basic',
+            'transitions',
+            'responsibles',
+            'notifications',
+            'metadata',
+          ]}
           ghost
           style={{ marginBottom: 8 }}
         >
-          {/* ── Identificação ── */}
           <Panel
             key="basic"
             header={
@@ -260,14 +282,20 @@ function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
               <Select
                 mode="tags"
                 placeholder="Ex.: aprovar, reprovar, devolver"
-                options={['aprovar', 'reprovar', 'devolver', 'enviar', 'concluir', 'publicar', 'arquivar', 'cancelar'].map(
-                  (a) => ({ label: a, value: a })
-                )}
+                options={[
+                  'aprovar',
+                  'reprovar',
+                  'devolver',
+                  'enviar',
+                  'concluir',
+                  'publicar',
+                  'arquivar',
+                  'cancelar',
+                ].map((a) => ({ label: a, value: a }))}
               />
             </Form.Item>
           </Panel>
 
-          {/* ── Responsáveis ── */}
           <Panel
             key="responsibles"
             header={
@@ -296,7 +324,6 @@ function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
             </div>
           </Panel>
 
-          {/* ── Notificações ── */}
           <Panel
             key="notifications"
             header={
@@ -308,28 +335,39 @@ function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
           >
             <Space direction="vertical" style={{ width: '100%' }}>
               <Space>
-                {receivesNotification
-                  ? <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                  : <CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
-                <Text>Recebe notificação: <Text strong>{receivesNotification ? 'Sim' : 'Não'}</Text></Text>
+                {receivesNotification ? (
+                  <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                ) : (
+                  <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                )}
+                <Text>
+                  Recebe notificação: <Text strong>{receivesNotification ? 'Sim' : 'Não'}</Text>
+                </Text>
               </Space>
               <Space>
-                {requiredNotification
-                  ? <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                  : <CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
-                <Text>Notificação obrigatória: <Text strong>{requiredNotification ? 'Sim' : 'Não'}</Text></Text>
+                {requiredNotification ? (
+                  <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                ) : (
+                  <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                )}
+                <Text>
+                  Notificação obrigatória:{' '}
+                  <Text strong>{requiredNotification ? 'Sim' : 'Não'}</Text>
+                </Text>
               </Space>
             </Space>
           </Panel>
 
-          {/* ── Transições ── */}
           <Panel
             key="transitions"
             header={
               <Space>
                 <SwapOutlined style={{ color: '#13c2c2' }} />
                 <Text strong>Transições</Text>
-                <Badge count={step.transitions?.length ?? 0} style={{ backgroundColor: '#13c2c2' }} />
+                <Badge
+                  count={step.transitions?.length ?? 0}
+                  style={{ backgroundColor: '#13c2c2' }}
+                />
               </Space>
             }
           >
@@ -354,7 +392,6 @@ function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
             )}
           </Panel>
 
-          {/* ── Metadados ── */}
           <Panel
             key="metadata"
             header={
@@ -393,24 +430,38 @@ function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
   )
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
-
-export function WorkflowDetailPage() {
-  const { id } = useParams()
+export function WorkflowDetailPage({
+  workflowId,
+  embedded = false,
+  onBack,
+}: WorkflowDetailPageProps) {
+  const params = useParams()
   const navigate = useNavigate()
+  const resolvedWorkflowId = workflowId ?? params.id
 
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [workflowState, setWorkflowState] = useState<Workflow | null>(null)
 
   const { data: workflow, isLoading } = useQuery<Workflow>({
-    queryKey: ['workflow', id],
-    queryFn: () => getWorkflow(id!),
-    enabled: !!id,
+    queryKey: ['workflow', resolvedWorkflowId],
+    queryFn: () => getWorkflow(resolvedWorkflowId!),
+    enabled: !!resolvedWorkflowId,
   })
 
-  const orderedSteps = useMemo(() => {
-    return (workflow?.steps ?? []).slice().sort((a, b) => a.orderIndex - b.orderIndex)
+  useEffect(() => {
+    if (workflow) {
+      setWorkflowState(workflow)
+    }
   }, [workflow])
+
+  const currentWorkflow = workflowState ?? workflow ?? null
+
+  const orderedSteps = useMemo(() => {
+    return (currentWorkflow?.steps ?? [])
+      .slice()
+      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+  }, [currentWorkflow])
 
   const handleStepClick = (step: WorkflowStep) => {
     setSelectedStep(step)
@@ -418,10 +469,33 @@ export function WorkflowDetailPage() {
   }
 
   const handleStepSave = (updated: WorkflowStep) => {
-    // Aqui você chamaria sua mutation/API para salvar
-    console.log('Step atualizado:', updated)
-    // Ex: updateStepMutation.mutate(updated)
+    setWorkflowState((prev) => {
+      if (!prev) return prev
+
+      return {
+        ...prev,
+        steps: prev.steps.map((step) => (step.id === updated.id ? updated : step)),
+      }
+    })
+
+    setSelectedStep(updated)
     setDrawerOpen(false)
+  }
+
+  const handleLayoutChange = (
+    nodePositions: Record<string, WorkflowNodePosition>,
+  ) => {
+    setWorkflowState((prev) => {
+      if (!prev) return prev
+
+      return {
+        ...prev,
+        layout: {
+          ...(prev.layout ?? {}),
+          nodePositions,
+        },
+      }
+    })
   }
 
   if (isLoading) {
@@ -435,7 +509,7 @@ export function WorkflowDetailPage() {
     )
   }
 
-  if (!workflow) {
+  if (!currentWorkflow) {
     return (
       <div style={{ padding: 24 }}>
         <Empty description="Fluxo não encontrado" />
@@ -444,16 +518,38 @@ export function WorkflowDetailPage() {
   }
 
   return (
-    <div style={{ padding: 24, background: '#f5f7fb', minHeight: '100vh' }}>
+    <div
+      style={{
+        padding: embedded ? 0 : 24,
+        background: embedded ? 'transparent' : '#f5f7fb',
+        minHeight: embedded ? 'auto' : '100vh',
+      }}
+    >
       <Space
-        style={{ marginBottom: 20, width: '100%', justifyContent: 'space-between', display: 'flex' }}
+        style={{
+          marginBottom: 20,
+          width: '100%',
+          justifyContent: 'space-between',
+          display: 'flex',
+        }}
       >
         <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/workflows')}>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => {
+              if (embedded) {
+                onBack?.()
+                return
+              }
+              navigate('/workflows')
+            }}
+          >
             Voltar
           </Button>
           <div>
-            <Title level={3} style={{ margin: 0 }}>{workflow.name}</Title>
+            <Title level={3} style={{ margin: 0 }}>
+              {currentWorkflow.name}
+            </Title>
             <Text type="secondary">Visualização detalhada do fluxo BPM</Text>
           </div>
         </Space>
@@ -466,40 +562,51 @@ export function WorkflowDetailPage() {
               <FileTextOutlined style={{ fontSize: 20, color: '#1677ff' }} />
               <div>
                 <Text type="secondary">Nome do fluxo</Text>
-                <div><Text strong>{workflow.name}</Text></div>
+                <div>
+                  <Text strong>{currentWorkflow.name}</Text>
+                </div>
               </div>
             </Space>
           </Card>
         </Col>
+
         <Col xs={24} md={12} xl={6}>
           <Card bordered={false} style={{ borderRadius: 16 }}>
             <Space>
               <Badge status="processing" />
               <div>
                 <Text type="secondary">Versão</Text>
-                <div><Text strong>{workflow.version}</Text></div>
+                <div>
+                  <Text strong>{currentWorkflow.version}</Text>
+                </div>
               </div>
             </Space>
           </Card>
         </Col>
+
         <Col xs={24} md={12} xl={6}>
           <Card bordered={false} style={{ borderRadius: 16 }}>
             <Space>
               <SwapOutlined style={{ fontSize: 20, color: '#722ed1' }} />
               <div>
                 <Text type="secondary">Total de etapas</Text>
-                <div><Text strong>{workflow.steps.length}</Text></div>
+                <div>
+                  <Text strong>{currentWorkflow.steps.length}</Text>
+                </div>
               </div>
             </Space>
           </Card>
         </Col>
+
         <Col xs={24} md={12} xl={6}>
           <Card bordered={false} style={{ borderRadius: 16 }}>
             <Space>
               <ClockCircleOutlined style={{ fontSize: 20, color: '#fa8c16' }} />
               <div>
                 <Text type="secondary">Modelo BPM</Text>
-                <div><Text strong>Fluxo controlado</Text></div>
+                <div>
+                  <Text strong>Fluxo controlado</Text>
+                </div>
               </div>
             </Space>
           </Card>
@@ -508,10 +615,12 @@ export function WorkflowDetailPage() {
 
       <Card bordered={false} style={{ marginBottom: 16, borderRadius: 16 }} title="Resumo do fluxo">
         <Descriptions column={2}>
-          <Descriptions.Item label="Nome">{workflow.name}</Descriptions.Item>
-          <Descriptions.Item label="Versão">{workflow.version}</Descriptions.Item>
-          <Descriptions.Item label="Etapas">{workflow.steps.length}</Descriptions.Item>
-          <Descriptions.Item label="Descrição">{workflow.description || '-'}</Descriptions.Item>
+          <Descriptions.Item label="Nome">{currentWorkflow.name}</Descriptions.Item>
+          <Descriptions.Item label="Versão">{currentWorkflow.version}</Descriptions.Item>
+          <Descriptions.Item label="Etapas">{currentWorkflow.steps.length}</Descriptions.Item>
+          <Descriptions.Item label="Descrição">
+            {currentWorkflow.description || '-'}
+          </Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -523,10 +632,20 @@ export function WorkflowDetailPage() {
               label: 'Diagrama de Fluxo',
               children: (
                 <div style={{ paddingTop: 8 }}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 12, borderRadius: 12 }}
+                    message="Editor visual habilitado"
+                    description="Agora você pode arrastar os nós manualmente. O layout é aplicado localmente nesta tela."
+                  />
+
                   <WorkflowDiagram
-                    workflow={workflow}
+                    workflow={currentWorkflow}
                     height={520}
+                    editable
                     onStepClick={handleStepClick}
+                    onLayoutChange={handleLayoutChange}
                   />
                 </div>
               ),
@@ -561,10 +680,20 @@ export function WorkflowDetailPage() {
                             <Text strong style={{ fontSize: 16 }}>
                               {step.orderIndex}. {step.name}
                             </Text>
-                            {step.isInitial && <Tag icon={<PlayCircleOutlined />} color="blue">Inicial</Tag>}
-                            {step.isFinal && <Tag icon={<StopOutlined />} color="purple">Final</Tag>}
+                            {step.isInitial && (
+                              <Tag icon={<PlayCircleOutlined />} color="blue">
+                                Inicial
+                              </Tag>
+                            )}
+                            {step.isFinal && (
+                              <Tag icon={<StopOutlined />} color="purple">
+                                Final
+                              </Tag>
+                            )}
                             {step.slaHours ? (
-                              <Tag icon={<ClockCircleOutlined />} color="gold">SLA: {step.slaHours}h</Tag>
+                              <Tag icon={<ClockCircleOutlined />} color="gold">
+                                SLA: {step.slaHours}h
+                              </Tag>
                             ) : null}
                           </Space>
                         }
@@ -588,7 +717,12 @@ export function WorkflowDetailPage() {
                           <Col xs={24} lg={12}>
                             <Card
                               size="small"
-                              title={<Space><UserOutlined /><span>Responsáveis</span></Space>}
+                              title={
+                                <Space>
+                                  <UserOutlined />
+                                  <span>Responsáveis</span>
+                                </Space>
+                              }
                               style={{ borderRadius: 12 }}
                             >
                               {responsibles.length > 0 ? (
@@ -608,21 +742,36 @@ export function WorkflowDetailPage() {
                           <Col xs={24} lg={12}>
                             <Card
                               size="small"
-                              title={<Space><NotificationOutlined /><span>Notificações</span></Space>}
+                              title={
+                                <Space>
+                                  <NotificationOutlined />
+                                  <span>Notificações</span>
+                                </Space>
+                              }
                               style={{ borderRadius: 12 }}
                             >
                               <Space direction="vertical" size={8}>
                                 <Space>
-                                  {receivesNotification
-                                    ? <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                                    : <CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
-                                  <Text>Recebe notificação: <Text strong>{receivesNotification ? 'Sim' : 'Não'}</Text></Text>
+                                  {receivesNotification ? (
+                                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                                  ) : (
+                                    <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                                  )}
+                                  <Text>
+                                    Recebe notificação:{' '}
+                                    <Text strong>{receivesNotification ? 'Sim' : 'Não'}</Text>
+                                  </Text>
                                 </Space>
                                 <Space>
-                                  {requiredNotification
-                                    ? <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                                    : <CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
-                                  <Text>Notificação obrigatória: <Text strong>{requiredNotification ? 'Sim' : 'Não'}</Text></Text>
+                                  {requiredNotification ? (
+                                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                                  ) : (
+                                    <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                                  )}
+                                  <Text>
+                                    Notificação obrigatória:{' '}
+                                    <Text strong>{requiredNotification ? 'Sim' : 'Não'}</Text>
+                                  </Text>
                                 </Space>
                               </Space>
                             </Card>
@@ -631,7 +780,12 @@ export function WorkflowDetailPage() {
                           <Col xs={24}>
                             <Card
                               size="small"
-                              title={<Space><FileTextOutlined /><span>Metadados da atividade</span></Space>}
+                              title={
+                                <Space>
+                                  <FileTextOutlined />
+                                  <span>Metadados da atividade</span>
+                                </Space>
+                              }
                               style={{ borderRadius: 12 }}
                             >
                               {metadata.length > 0 ? (
@@ -645,9 +799,13 @@ export function WorkflowDetailPage() {
                                         <Space direction="vertical" size={4} style={{ width: '100%' }}>
                                           <Space wrap>
                                             <Text strong>{parsed.title}</Text>
-                                            {parsed.subtitle && <Tag color="default">{parsed.subtitle}</Tag>}
+                                            {parsed.subtitle && (
+                                              <Tag color="default">{parsed.subtitle}</Tag>
+                                            )}
                                             {parsed.required && <Tag color="red">Obrigatório</Tag>}
-                                            {parsed.multiple && <Tag color="cyan">Multivalorado</Tag>}
+                                            {parsed.multiple && (
+                                              <Tag color="cyan">Multivalorado</Tag>
+                                            )}
                                           </Space>
                                         </Space>
                                       </List.Item>
@@ -655,7 +813,9 @@ export function WorkflowDetailPage() {
                                   }}
                                 />
                               ) : (
-                                <Text type="secondary">Nenhum metadado configurado para esta atividade</Text>
+                                <Text type="secondary">
+                                  Nenhum metadado configurado para esta atividade
+                                </Text>
                               )}
                             </Card>
                           </Col>
@@ -665,7 +825,9 @@ export function WorkflowDetailPage() {
                               {step.allowedActions.length > 0 ? (
                                 <Space wrap>
                                   {step.allowedActions.map((action) => (
-                                    <Tag key={action} color={getActionColor(action)}>{action}</Tag>
+                                    <Tag key={action} color={getActionColor(action)}>
+                                      {action}
+                                    </Tag>
                                   ))}
                                 </Space>
                               ) : (
@@ -683,7 +845,8 @@ export function WorkflowDetailPage() {
                                       key={transition.id ?? `${step.id}-transition-${index}`}
                                       color={getActionColor(transition.triggerAction)}
                                     >
-                                      {transition.triggerAction} → {transition.toStepName || 'Destino não informado'}
+                                      {transition.triggerAction} →{' '}
+                                      {transition.toStepName || 'Destino não informado'}
                                     </Tag>
                                   ))}
                                 </Space>
@@ -705,7 +868,6 @@ export function WorkflowDetailPage() {
         />
       </Card>
 
-      {/* Drawer de edição */}
       <StepEditDrawer
         step={selectedStep}
         open={drawerOpen}

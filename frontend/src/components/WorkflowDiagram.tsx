@@ -1,7 +1,25 @@
-import { useMemo, useState } from 'react'
+import {
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import { Card, Empty, Typography, Space, Button } from 'antd'
-import { ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons'
-import type { Workflow, WorkflowStep, WorkflowTransition } from '../types'
+import {
+  ZoomInOutlined,
+  ZoomOutOutlined,
+  ExpandOutlined,
+  DragOutlined,
+} from '@ant-design/icons'
+import type {
+  Workflow,
+  WorkflowStep,
+  WorkflowTransition,
+  WorkflowEventDefinition,
+  WorkflowNodePosition,
+} from '../types'
 
 const { Text } = Typography
 
@@ -16,6 +34,8 @@ type DiagramNode = {
   stepId?: string
   orderIndex?: number
   step?: WorkflowStep
+  subtitle?: string
+  events?: WorkflowEventDefinition[]
 }
 
 type DiagramEdge = {
@@ -26,16 +46,54 @@ type DiagramEdge = {
   color?: string
   kind?: 'normal' | 'gateway' | 'return' | 'to-end'
   lane?: number
+  transition?: WorkflowTransition
+  events?: WorkflowEventDefinition[]
+}
+
+type EventClickPayload = {
+  scope: 'start' | 'step' | 'transition'
+  workflow: Workflow
+  events: WorkflowEventDefinition[]
+  step?: WorkflowStep
+  transition?: WorkflowTransition
 }
 
 type Props = {
   workflow: Workflow
   height?: number
+  editable?: boolean
   onStepClick?: (step: WorkflowStep) => void
+  onStartClick?: (workflow: Workflow) => void
+  onEventClick?: (payload: EventClickPayload) => void
+  onLayoutChange?: (nodePositions: Record<string, WorkflowNodePosition>) => void
+}
+
+const NODE_WIDTH = 170
+const NODE_HALF_WIDTH = NODE_WIDTH / 2
+const START_RADIUS = 30
+const END_RADIUS = 24
+const GATEWAY_HALF = 22
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function truncate(text?: string, max = 18) {
+  if (!text) return ''
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
+
+function getNodeHalf(nodeType: DiagramNodeType) {
+  if (nodeType === 'activity') return NODE_HALF_WIDTH
+  if (nodeType === 'gateway') return GATEWAY_HALF
+  if (nodeType === 'start') return START_RADIUS
+  return END_RADIUS
 }
 
 function getOrderedSteps(workflow: Workflow): WorkflowStep[] {
-  return [...(workflow.steps ?? [])].sort((a, b) => a.orderIndex - b.orderIndex)
+  return [...(workflow.steps ?? [])].sort(
+    (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
+  )
 }
 
 function resolveTargetStep(
@@ -74,14 +132,39 @@ function getEdgeColor(action?: string) {
     solicitar: '#eb2f96',
     revisar: '#13c2c2',
   }
+
   return map[(action || '').toLowerCase()] || '#64748b'
 }
 
 function getResponsibleLabel(step: WorkflowStep): string | null {
   const s = step as WorkflowStep & {
-    responsibles?: Array<string | { name?: string; fullName?: string; roleName?: string; positionName?: string; type?: string }>
-    assignees?: Array<string | { name?: string; fullName?: string; roleName?: string }>
-    users?: Array<string | { name?: string; fullName?: string }>
+    responsibles?: Array<
+      | string
+      | {
+          id?: string
+          name?: string
+          fullName?: string
+          roleName?: string
+          positionName?: string
+        }
+    >
+    assignees?: Array<
+      | string
+      | {
+          id?: string
+          name?: string
+          fullName?: string
+          roleName?: string
+        }
+    >
+    users?: Array<
+      | string
+      | {
+          id?: string
+          name?: string
+          fullName?: string
+        }
+    >
   }
 
   const list = s.responsibles ?? s.assignees ?? s.users ?? []
@@ -97,6 +180,62 @@ function getResponsibleLabel(step: WorkflowStep): string | null {
     (first as { positionName?: string }).positionName ||
     null
   )
+}
+
+function getActiveEvents(events?: WorkflowEventDefinition[]) {
+  return (events ?? []).filter((event) => event.active !== false)
+}
+
+function getEventColor(type?: WorkflowEventDefinition['type']) {
+  switch (type) {
+    case 'notification':
+      return '#1677ff'
+    case 'flow-change':
+      return '#722ed1'
+    case 'extra-check':
+      return '#fa8c16'
+    case 'webhook':
+      return '#13c2c2'
+    case 'integration':
+      return '#52c41a'
+    case 'task':
+      return '#eb2f96'
+    default:
+      return '#64748b'
+  }
+}
+
+function getEventShortLabel(type?: WorkflowEventDefinition['type']) {
+  switch (type) {
+    case 'notification':
+      return 'NOT'
+    case 'flow-change':
+      return 'FLX'
+    case 'extra-check':
+      return 'CHK'
+    case 'webhook':
+      return 'WEB'
+    case 'integration':
+      return 'INT'
+    case 'task':
+      return 'TSK'
+    default:
+      return 'EV'
+  }
+}
+
+function getEventSummary(events?: WorkflowEventDefinition[]) {
+  const list = getActiveEvents(events)
+  if (!list.length) return null
+
+  const distinctTypes = Array.from(
+    new Set(list.map((item) => getEventShortLabel(item.type)))
+  )
+
+  const typesPreview = distinctTypes.slice(0, 3).join(' • ')
+  return `${list.length} evento${list.length > 1 ? 's' : ''}${
+    typesPreview ? ` · ${typesPreview}` : ''
+  }`
 }
 
 function buildDiagram(workflow: Workflow) {
@@ -115,25 +254,33 @@ function buildDiagram(workflow: Workflow) {
   const nodes: DiagramNode[] = []
   const edges: DiagramEdge[] = []
 
-  const START_X = 90
-  const STEP_X_1 = 220
-  const STEP_X_2 = 430
-  const GATEWAY_X = 600
-  const BRANCH_X = 860
-  const END_X = 1140
+  const START_X = 110
+  const STEP_X_1 = 250
+  const STEP_X_2 = 470
+  const GATEWAY_X = 650
+  const BRANCH_X = 930
+  const END_X = 1220
 
-  const BASE_Y = 300
-  const TOP_RETURN_Y = 110
-  const BRANCH_GAP_Y = 150
+  const BASE_Y = 320
+  const TOP_RETURN_Y = 120
+  const BRANCH_GAP_Y = 170
 
   const startNodeId = 'start-node'
   const endNodeId = 'end-node'
 
   const stepNodeMap = new Map<string, DiagramNode>()
 
-  const initialStep = steps.find((step) => step.isInitial) ?? steps[0]
+  const startConfig = workflow.startConfig
+  const startEvents = getActiveEvents(startConfig?.events)
 
-  const gatewaySourceStep = steps.find((step) => (step.transitions?.length ?? 0) > 1)
+  const initialStep =
+    steps.find((step) => step.id === startConfig?.initialStepId) ??
+    steps.find((step) => step.isInitial) ??
+    steps[0]
+
+  const gatewaySourceStep = steps.find(
+    (step) => (step.transitions?.length ?? 0) > 1
+  )
 
   const gatewayResolvedTargets = gatewaySourceStep
     ? (gatewaySourceStep.transitions ?? [])
@@ -143,7 +290,8 @@ function buildDiagram(workflow: Workflow) {
 
   const gatewayForwardTargets = gatewaySourceStep
     ? gatewayResolvedTargets.filter(
-        (target) => (target.orderIndex ?? 0) >= (gatewaySourceStep.orderIndex ?? 0)
+        (target) =>
+          (target.orderIndex ?? 0) >= (gatewaySourceStep.orderIndex ?? 0)
       )
     : []
 
@@ -162,13 +310,15 @@ function buildDiagram(workflow: Workflow) {
   nodes.push({
     id: startNodeId,
     type: 'start',
-    label: 'Início',
+    label: startConfig?.name || 'Início',
+    subtitle: startConfig?.description,
     x: START_X,
     y: BASE_Y,
+    events: startEvents,
   })
 
   normalMainSteps.forEach((step) => {
-    let x = STEP_X_1 + mainIndex * 210
+    let x = STEP_X_1 + mainIndex * 220
     if (gatewaySourceStep && step.id === gatewaySourceStep.id) {
       x = STEP_X_2
     }
@@ -182,6 +332,7 @@ function buildDiagram(workflow: Workflow) {
       stepId: step.id,
       orderIndex: step.orderIndex,
       step,
+      events: getActiveEvents(step.events),
     }
 
     stepNodeMap.set(step.id || String(step.orderIndex), node)
@@ -195,7 +346,8 @@ function buildDiagram(workflow: Workflow) {
   if (gatewaySourceStep) {
     gatewayForwardTargets.forEach((step, idx) => {
       const total = gatewayForwardTargets.length
-      const startY = total === 1 ? BASE_Y : BASE_Y - ((total - 1) * BRANCH_GAP_Y) / 2
+      const startY =
+        total === 1 ? BASE_Y : BASE_Y - ((total - 1) * BRANCH_GAP_Y) / 2
 
       const node: DiagramNode = {
         id: `step-${step.id || step.orderIndex}`,
@@ -206,6 +358,7 @@ function buildDiagram(workflow: Workflow) {
         stepId: step.id,
         orderIndex: step.orderIndex,
         step,
+        events: getActiveEvents(step.events),
       }
 
       stepNodeMap.set(step.id || String(step.orderIndex), node)
@@ -213,17 +366,18 @@ function buildDiagram(workflow: Workflow) {
     })
   }
 
-  const rightMostY = BASE_Y
-
   nodes.push({
     id: endNodeId,
     type: 'end',
     label: 'Fim',
     x: END_X,
-    y: rightMostY,
+    y: BASE_Y,
   })
 
-  const initialNode = stepNodeMap.get(initialStep.id || String(initialStep.orderIndex))
+  const initialNode = stepNodeMap.get(
+    initialStep.id || String(initialStep.orderIndex)
+  )
+
   if (initialNode) {
     edges.push({
       id: 'edge-start-initial',
@@ -270,7 +424,9 @@ function buildDiagram(workflow: Workflow) {
       const targetStep = resolveTargetStep(transition, steps)
       if (!targetStep) return
 
-      const targetNode = stepNodeMap.get(targetStep.id || String(targetStep.orderIndex))
+      const targetNode = stepNodeMap.get(
+        targetStep.id || String(targetStep.orderIndex)
+      )
       if (!targetNode) return
 
       const sourceOrderIndex = step.orderIndex ?? 0
@@ -285,6 +441,8 @@ function buildDiagram(workflow: Workflow) {
         color: getEdgeColor(transition.triggerAction),
         kind: isReturn ? 'return' : 'normal',
         lane: 0,
+        transition,
+        events: getActiveEvents(transition.events),
       })
       return
     }
@@ -314,7 +472,9 @@ function buildDiagram(workflow: Workflow) {
       const targetStep = resolveTargetStep(transition, steps)
       if (!targetStep) return
 
-      const targetNode = stepNodeMap.get(targetStep.id || String(targetStep.orderIndex))
+      const targetNode = stepNodeMap.get(
+        targetStep.id || String(targetStep.orderIndex)
+      )
       if (!targetNode) return
 
       const sourceOrderIndex = step.orderIndex ?? 0
@@ -329,6 +489,8 @@ function buildDiagram(workflow: Workflow) {
         color: getEdgeColor(transition.triggerAction),
         kind: isReturn ? 'return' : 'normal',
         lane: index,
+        transition,
+        events: getActiveEvents(transition.events),
       })
     })
   })
@@ -336,28 +498,287 @@ function buildDiagram(workflow: Workflow) {
   return {
     nodes,
     edges,
-    width: END_X + 180,
-    height: 760,
+    width: END_X + 220,
+    height: 860,
     topReturnY: TOP_RETURN_Y,
   }
 }
 
+function applyManualPositions(
+  nodes: DiagramNode[],
+  nodePositions?: Record<string, WorkflowNodePosition>
+) {
+  if (!nodePositions) return nodes
+
+  return nodes.map((node) => {
+    const custom = nodePositions[node.id]
+    if (!custom) return node
+
+    return {
+      ...node,
+      x: custom.x,
+      y: custom.y,
+    }
+  })
+}
+
+function renderNodeEventBadge(
+  x: number,
+  y: number,
+  events: WorkflowEventDefinition[],
+  onClick?: () => void
+) {
+  if (!events.length) return null
+
+  const summary = getEventSummary(events) || `${events.length} evento(s)`
+  const color = getEventColor(events[0]?.type)
+  const width = Math.max(78, Math.min(128, summary.length * 6.1 + 18))
+
+  return (
+    <g
+      style={{ cursor: onClick ? 'pointer' : 'default' }}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick?.()
+      }}
+    >
+      <rect
+        x={x - width / 2}
+        y={y}
+        width={width}
+        height={18}
+        rx={9}
+        fill="#ffffff"
+        stroke={color}
+        strokeWidth={1.5}
+      />
+      <circle cx={x - width / 2 + 10} cy={y + 9} r={3.5} fill={color} />
+      <text
+        x={x - width / 2 + 18}
+        y={y + 12}
+        fontSize="10"
+        fill="#334155"
+        fontWeight="500"
+      >
+        {truncate(summary, 18)}
+      </text>
+    </g>
+  )
+}
+
+function renderEdgeAnnotations(
+  edge: DiagramEdge,
+  workflow: Workflow,
+  centerX: number,
+  topY: number,
+  maxWidth: number,
+  onEventClick?: (payload: EventClickPayload) => void
+) {
+  const events = getActiveEvents(edge.events)
+  const hasLabel = !!edge.label
+  const hasEvents = events.length > 0
+
+  if (!hasLabel && !hasEvents) return null
+
+  const labelWidth = hasLabel
+    ? Math.max(56, Math.min(maxWidth, (edge.label?.length ?? 0) * 7.4 + 20))
+    : 0
+
+  const eventSummary = hasEvents
+    ? `${events.length} evento${events.length > 1 ? 's' : ''}`
+    : ''
+
+  const eventWidth = hasEvents
+    ? Math.max(74, Math.min(maxWidth, eventSummary.length * 6.8 + 20))
+    : 0
+
+  return (
+    <g>
+      {hasLabel && (
+        <>
+          <rect
+            x={centerX - labelWidth / 2}
+            y={topY}
+            width={labelWidth}
+            height={20}
+            rx={8}
+            fill="#ffffff"
+            stroke="#e5e7eb"
+          />
+          <text
+            x={centerX}
+            y={topY + 13}
+            fontSize="12"
+            fill={edge.color || '#334155'}
+            textAnchor="middle"
+          >
+            {edge.label}
+          </text>
+        </>
+      )}
+
+      {hasEvents && (
+        <g
+          style={{ cursor: onEventClick ? 'pointer' : 'default' }}
+          onClick={(event) => {
+            event.stopPropagation()
+            if (!edge.transition) return
+
+            onEventClick?.({
+              scope: 'transition',
+              workflow,
+              transition: edge.transition,
+              events,
+            })
+          }}
+        >
+          <rect
+            x={centerX - eventWidth / 2}
+            y={topY + (hasLabel ? 24 : 0)}
+            width={eventWidth}
+            height={18}
+            rx={9}
+            fill="#ffffff"
+            stroke={getEventColor(events[0]?.type)}
+            strokeWidth={1.5}
+          />
+          <circle
+            cx={centerX - eventWidth / 2 + 10}
+            cy={topY + (hasLabel ? 24 : 0) + 9}
+            r={3.5}
+            fill={getEventColor(events[0]?.type)}
+          />
+          <text
+            x={centerX - eventWidth / 2 + 18}
+            y={topY + (hasLabel ? 24 : 0) + 12}
+            fontSize="10"
+            fill="#334155"
+            fontWeight="500"
+          >
+            {eventSummary}
+          </text>
+        </g>
+      )}
+    </g>
+  )
+}
+
 function renderNode(
   node: DiagramNode,
+  workflow: Workflow,
+  editable: boolean,
+  draggingNodeId: string | null,
+  onNodeMouseDown: (
+    event: ReactMouseEvent<SVGGElement, MouseEvent>,
+    node: DiagramNode
+  ) => void,
+  shouldIgnoreNodeClick: (nodeId: string) => boolean,
   onStepClick?: (step: WorkflowStep) => void,
+  onStartClick?: (workflow: Workflow) => void,
+  onEventClick?: (payload: EventClickPayload) => void,
   hoveredNodeId?: string | null,
   setHoveredNodeId?: (id: string | null) => void
 ) {
   const isHovered = hoveredNodeId === node.id
-  const isClickable = node.type === 'activity' && !!node.step
+  const isDragging = draggingNodeId === node.id
+  const isActivityClickable = node.type === 'activity' && !!node.step
+  const isStartClickable = node.type === 'start' && !!onStartClick
+  const isClickable = isActivityClickable || isStartClickable
+  const events = getActiveEvents(node.events)
+
+  const cursor = editable
+    ? isDragging
+      ? 'grabbing'
+      : 'grab'
+    : isClickable
+      ? 'pointer'
+      : 'default'
 
   if (node.type === 'start') {
     return (
-      <g key={node.id}>
-        <circle cx={node.x} cy={node.y} r={24} fill="#e6f4ff" stroke="#1677ff" strokeWidth={3} />
-        <text x={node.x} y={node.y + 4} textAnchor="middle" fontSize="12" fill="#0f172a">
-          {node.label}
+      <g
+        key={node.id}
+        style={{ cursor }}
+        onMouseDown={(event) => onNodeMouseDown(event, node)}
+        onClick={() => {
+          if (shouldIgnoreNodeClick(node.id)) return
+          onStartClick?.(workflow)
+        }}
+        onMouseEnter={() => setHoveredNodeId?.(node.id)}
+        onMouseLeave={() => setHoveredNodeId?.(null)}
+      >
+        {isHovered && (isStartClickable || editable) && (
+          <circle
+            cx={node.x}
+            cy={node.y}
+            r={38}
+            fill="rgba(22,119,255,0.10)"
+            stroke="none"
+          />
+        )}
+
+        <circle
+          cx={node.x}
+          cy={node.y}
+          r={30}
+          fill={isHovered ? '#dbeafe' : '#e6f4ff'}
+          stroke="#1677ff"
+          strokeWidth={3}
+        />
+        <circle
+          cx={node.x}
+          cy={node.y}
+          r={22}
+          fill="none"
+          stroke="#1677ff"
+          strokeWidth={1.5}
+          opacity={0.55}
+        />
+
+        <text
+          x={node.x}
+          y={node.y + 4}
+          textAnchor="middle"
+          fontSize="12"
+          fill="#0f172a"
+          fontWeight="600"
+        >
+          {truncate(node.label, 10)}
         </text>
+
+        <text
+          x={node.x}
+          y={node.y + 46}
+          textAnchor="middle"
+          fontSize="11"
+          fill="#64748b"
+        >
+          {editable ? 'Clique ou arraste' : 'Clique para configurar'}
+        </text>
+
+        {events.length > 0 &&
+          renderNodeEventBadge(node.x, node.y - 56, events, () => {
+            onEventClick?.({
+              scope: 'start',
+              workflow,
+              events,
+            })
+          })}
+
+        {isHovered && (isStartClickable || editable) && (
+          <g>
+            <circle cx={node.x + 26} cy={node.y - 26} r={10} fill="#1677ff" />
+            <text
+              x={node.x + 26}
+              y={node.y - 22}
+              textAnchor="middle"
+              fontSize="11"
+              fill="#ffffff"
+            >
+              {editable ? '↕' : '⚙'}
+            </text>
+          </g>
+        )}
       </g>
     )
   }
@@ -372,9 +793,26 @@ function renderNode(
     ].join(' ')
 
     return (
-      <g key={node.id}>
-        <polygon points={points} fill="#fff7e6" stroke="#fa8c16" strokeWidth={3} />
-        <text x={node.x} y={node.y + 4} textAnchor="middle" fontSize="13" fill="#fa8c16">
+      <g
+        key={node.id}
+        style={{ cursor }}
+        onMouseDown={(event) => onNodeMouseDown(event, node)}
+        onMouseEnter={() => setHoveredNodeId?.(node.id)}
+        onMouseLeave={() => setHoveredNodeId?.(null)}
+      >
+        <polygon
+          points={points}
+          fill="#fff7e6"
+          stroke="#fa8c16"
+          strokeWidth={3}
+        />
+        <text
+          x={node.x}
+          y={node.y + 4}
+          textAnchor="middle"
+          fontSize="13"
+          fill="#fa8c16"
+        >
           ×
         </text>
       </g>
@@ -383,17 +821,42 @@ function renderNode(
 
   if (node.type === 'end') {
     return (
-      <g key={node.id}>
-        <circle cx={node.x} cy={node.y} r={24} fill="#f6ffed" stroke="#52c41a" strokeWidth={4} />
-        <circle cx={node.x} cy={node.y} r={18} fill="none" stroke="#52c41a" strokeWidth={2} />
-        <text x={node.x} y={node.y + 40} textAnchor="middle" fontSize="12" fill="#0f172a">
+      <g
+        key={node.id}
+        style={{ cursor }}
+        onMouseDown={(event) => onNodeMouseDown(event, node)}
+        onMouseEnter={() => setHoveredNodeId?.(node.id)}
+        onMouseLeave={() => setHoveredNodeId?.(null)}
+      >
+        <circle
+          cx={node.x}
+          cy={node.y}
+          r={24}
+          fill="#f6ffed"
+          stroke="#52c41a"
+          strokeWidth={4}
+        />
+        <circle
+          cx={node.x}
+          cy={node.y}
+          r={18}
+          fill="none"
+          stroke="#52c41a"
+          strokeWidth={2}
+        />
+        <text
+          x={node.x}
+          y={node.y + 40}
+          textAnchor="middle"
+          fontSize="12"
+          fill="#0f172a"
+        >
           {node.label}
         </text>
       </g>
     )
   }
 
-  // Activity node — enriquecido com SLA e responsável
   const step = node.step
   const slaHours = step?.slaHours
   const responsible = step ? getResponsibleLabel(step) : null
@@ -409,28 +872,28 @@ function renderNode(
         : '#d9d9d9'
 
   const fillColor = isHovered ? '#f0f9ff' : '#ffffff'
+  const hasInfoRow = !!(slaHours || responsible)
+  const hasEventRow = events.length > 0
 
-  // Altura da caixa aumenta se tem informações extras
-  const hasExtra = !!(slaHours || responsible)
-  const boxHeight = hasExtra ? 76 : 60
+  const boxHeight = hasEventRow ? 96 : hasInfoRow ? 76 : 60
   const boxY = node.y - boxHeight / 2
-
-  const labelY = hasExtra ? node.y - 14 : node.y + 4
+  const titleY = hasInfoRow || hasEventRow ? node.y - 18 : node.y + 4
 
   return (
     <g
       key={node.id}
-      style={{ cursor: isClickable ? 'pointer' : 'default' }}
+      style={{ cursor }}
+      onMouseDown={(event) => onNodeMouseDown(event, node)}
       onClick={() => {
-        if (isClickable && node.step && onStepClick) {
+        if (shouldIgnoreNodeClick(node.id)) return
+        if (isActivityClickable && node.step && onStepClick) {
           onStepClick(node.step)
         }
       }}
       onMouseEnter={() => setHoveredNodeId?.(node.id)}
       onMouseLeave={() => setHoveredNodeId?.(null)}
     >
-      {/* Sombra de hover */}
-      {isHovered && isClickable && (
+      {isHovered && (isClickable || editable) && (
         <rect
           x={node.x - 87}
           y={boxY - 2}
@@ -451,11 +914,10 @@ function renderNode(
         ry={14}
         fill={fillColor}
         stroke={borderColor}
-        strokeWidth={isHovered ? 2 : 2}
+        strokeWidth={2}
         style={{ transition: 'all 0.15s ease' }}
       />
 
-      {/* Badge inicial/final */}
       {(isInitial || isFinal) && (
         <rect
           x={node.x - 85}
@@ -464,77 +926,120 @@ function renderNode(
           height={18}
           rx={14}
           fill={isInitial ? '#1677ff' : '#722ed1'}
-          opacity={0.9}
+          opacity={0.92}
         />
       )}
+
       {isInitial && (
-        <text x={node.x} y={boxY + 12} textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="600">
+        <text
+          x={node.x}
+          y={boxY + 12}
+          textAnchor="middle"
+          fontSize="9"
+          fill="#ffffff"
+          fontWeight="600"
+        >
           INICIAL
         </text>
       )}
+
       {isFinal && (
-        <text x={node.x} y={boxY + 12} textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="600">
+        <text
+          x={node.x}
+          y={boxY + 12}
+          textAnchor="middle"
+          fontSize="9"
+          fill="#ffffff"
+          fontWeight="600"
+        >
           FINAL
         </text>
       )}
 
-      {/* Label principal */}
       <text
         x={node.x}
-        y={labelY}
+        y={titleY}
         textAnchor="middle"
         fontSize="13"
         fontWeight="500"
         fill="#0f172a"
       >
-        {node.label.length > 18 ? node.label.slice(0, 17) + '…' : node.label}
+        {truncate(node.label, 22)}
       </text>
 
-      {/* Linha divisória */}
-      {hasExtra && (
+      {(hasInfoRow || hasEventRow) && (
         <line
           x1={node.x - 75}
-          y1={node.y - 2}
+          y1={node.y - 4}
           x2={node.x + 75}
-          y2={node.y - 2}
+          y2={node.y - 4}
           stroke="#f0f0f0"
           strokeWidth={1}
         />
       )}
 
-      {/* SLA */}
-      {slaHours && (
-        <g>
-          <text
-            x={node.x - 70}
-            y={node.y + 14}
-            fontSize="10"
-            fill="#fa8c16"
-            fontWeight="500"
-          >
-            ⏱ SLA: {slaHours}h
-          </text>
-        </g>
+      {hasInfoRow && (
+        <>
+          {slaHours && (
+            <text
+              x={node.x - 70}
+              y={node.y + 12}
+              fontSize="10"
+              fill="#fa8c16"
+              fontWeight="500"
+            >
+              SLA: {slaHours}h
+            </text>
+          )}
+
+          {responsible && (
+            <text
+              x={slaHours ? node.x + 8 : node.x - 70}
+              y={node.y + 12}
+              fontSize="10"
+              fill="#6b7280"
+            >
+              Resp: {truncate(responsible, 12)}
+            </text>
+          )}
+        </>
       )}
 
-      {/* Responsável */}
-      {responsible && (
-        <text
-          x={slaHours ? node.x + 10 : node.x - 70}
-          y={node.y + 14}
-          fontSize="10"
-          fill="#6b7280"
-        >
-          👤 {responsible.length > 10 ? responsible.slice(0, 9) + '…' : responsible}
-        </text>
+      {hasEventRow && (
+        <>
+          <line
+            x1={node.x - 75}
+            y1={node.y + 20}
+            x2={node.x + 75}
+            y2={node.y + 20}
+            stroke="#f0f0f0"
+            strokeWidth={1}
+          />
+
+          {renderNodeEventBadge(node.x, node.y + 28, events, () => {
+            if (!node.step) return
+
+            onEventClick?.({
+              scope: 'step',
+              workflow,
+              step: node.step,
+              events,
+            })
+          })}
+        </>
       )}
 
-      {/* Ícone de clique */}
-      {isClickable && isHovered && (
+      {(isClickable || editable) && isHovered && (
         <g>
           <circle cx={node.x + 72} cy={boxY + 12} r={9} fill="#1677ff" />
-          <text x={node.x + 72} y={boxY + 16} textAnchor="middle" fontSize="10" fill="#fff">
-            ✎
+          <text
+            x={node.x + 72}
+            y={boxY + 16}
+            textAnchor="middle"
+            fontSize="10"
+            fill="#fff"
+          >
+            {editable ? '↕' : '✎'}
           </text>
         </g>
       )}
@@ -542,68 +1047,78 @@ function renderNode(
   )
 }
 
-function renderLabel(edge: DiagramEdge, x: number, y: number, align: 'left' | 'center' = 'left') {
-  if (!edge.label) return null
-
-  const labelWidth = Math.max(56, edge.label.length * 7.4)
-  const rectX = align === 'center' ? x - labelWidth / 2 : x - 6
-  const textAnchor = align === 'center' ? 'middle' : 'start'
-
-  return (
-    <>
-      <rect x={rectX} y={y - 12} width={labelWidth} height={20} rx={8} fill="#ffffff" stroke="#e5e7eb" />
-      <text x={x} y={y + 2} fontSize="12" fill={edge.color || '#334155'} textAnchor={textAnchor}>
-        {edge.label}
-      </text>
-    </>
-  )
-}
-
-function renderForwardEdge(edge: DiagramEdge, nodeMap: Map<string, DiagramNode>) {
+function renderForwardEdge(
+  edge: DiagramEdge,
+  nodeMap: Map<string, DiagramNode>,
+  workflow: Workflow,
+  onEventClick?: (payload: EventClickPayload) => void
+) {
   const source = nodeMap.get(edge.source)
   const target = nodeMap.get(edge.target)
   if (!source || !target) return null
 
-  const sourceHalf = source.type === 'activity' ? 85 : source.type === 'gateway' ? 22 : 24
-  const targetHalf = target.type === 'activity' ? 85 : target.type === 'gateway' ? 22 : 24
+  const sourceHalf = getNodeHalf(source.type)
+  const targetHalf = getNodeHalf(target.type)
 
   const startX = source.x + sourceHalf
   const startY = source.y
   const endX = target.x - targetHalf
   const endY = target.y
 
-  const lane = edge.lane ?? 0
   const bendX = startX + Math.max(45, (endX - startX) / 2)
-
   const path = `M ${startX} ${startY} L ${bendX} ${startY} L ${bendX} ${endY} L ${endX} ${endY}`
 
-  let labelX = bendX + 8
-  let labelY = startY === endY ? startY - 18 : (startY + endY) / 2 - 16
-  let align: 'left' | 'center' = 'left'
+  const availableWidth = Math.max(80, Math.abs(endX - startX) - 24)
+  const midX = clamp(
+    (startX + endX) / 2,
+    Math.min(startX, endX) + 40,
+    Math.max(startX, endX) - 40
+  )
 
-  if (edge.kind === 'gateway') { labelX = bendX + 8; labelY = startY - 18 }
-  if (source.type === 'gateway') {
-    labelX = bendX + 8
-    labelY = endY > startY ? startY + 34 + lane * 6 : startY - 24 - lane * 6
-  }
-  if (edge.kind === 'to-end') { labelX = (startX + endX) / 2; labelY = startY - 18; align = 'center' }
+  const hasEvents = (edge.events?.length ?? 0) > 0
+  const annotationY =
+    Math.min(startY, endY) - (hasEvents && edge.label ? 58 : hasEvents ? 36 : 28)
 
   return (
     <g key={edge.id}>
-      <path d={path} fill="none" stroke={edge.color || '#64748b'} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-      <polygon points={`${endX},${endY} ${endX - 10},${endY - 6} ${endX - 10},${endY + 6}`} fill={edge.color || '#64748b'} />
-      {renderLabel(edge, labelX, labelY, align)}
+      <path
+        d={path}
+        fill="none"
+        stroke={edge.color || '#64748b'}
+        strokeWidth={2.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <polygon
+        points={`${endX},${endY} ${endX - 10},${endY - 6} ${endX - 10},${endY + 6}`}
+        fill={edge.color || '#64748b'}
+      />
+
+      {renderEdgeAnnotations(
+        edge,
+        workflow,
+        midX,
+        annotationY,
+        availableWidth,
+        onEventClick
+      )}
     </g>
   )
 }
 
-function renderReturnEdge(edge: DiagramEdge, nodeMap: Map<string, DiagramNode>, topReturnY: number) {
+function renderReturnEdge(
+  edge: DiagramEdge,
+  nodeMap: Map<string, DiagramNode>,
+  topReturnY: number,
+  workflow: Workflow,
+  onEventClick?: (payload: EventClickPayload) => void
+) {
   const source = nodeMap.get(edge.source)
   const target = nodeMap.get(edge.target)
   if (!source || !target) return null
 
-  const sourceHalf = source.type === 'activity' ? 85 : source.type === 'gateway' ? 22 : 24
-  const targetHalf = target.type === 'activity' ? 85 : target.type === 'gateway' ? 22 : 24
+  const sourceHalf = getNodeHalf(source.type)
+  const targetHalf = getNodeHalf(target.type)
 
   const startX = source.x + sourceHalf
   const startY = source.y
@@ -611,40 +1126,222 @@ function renderReturnEdge(edge: DiagramEdge, nodeMap: Map<string, DiagramNode>, 
   const endY = target.y
 
   const lane = edge.lane ?? 0
-  const routeY = topReturnY - lane * 34
+  const routeY = topReturnY - lane * 42
 
   const path = `M ${startX} ${startY} L ${startX + 40} ${startY} L ${startX + 40} ${routeY} L ${endX - 40} ${routeY} L ${endX - 40} ${endY} L ${endX} ${endY}`
-  const labelX = (startX + endX) / 2
-  const labelY = routeY - 10
+
+  const availableWidth = Math.max(80, Math.abs(endX - startX) - 24)
+  const midX = clamp(
+    (startX + endX) / 2,
+    Math.min(startX, endX) + 40,
+    Math.max(startX, endX) - 40
+  )
+
+  const hasEvents = (edge.events?.length ?? 0) > 0
+  const annotationY =
+    routeY - (hasEvents && edge.label ? 58 : hasEvents ? 36 : 28)
 
   return (
     <g key={edge.id}>
-      <path d={path} fill="none" stroke={edge.color || '#64748b'} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-      <polygon points={`${endX},${endY} ${endX - 10},${endY - 6} ${endX - 10},${endY + 6}`} fill={edge.color || '#64748b'} />
-      {renderLabel(edge, labelX, labelY, 'center')}
+      <path
+        d={path}
+        fill="none"
+        stroke={edge.color || '#64748b'}
+        strokeWidth={2.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <polygon
+        points={`${endX},${endY} ${endX - 10},${endY - 6} ${endX - 10},${endY + 6}`}
+        fill={edge.color || '#64748b'}
+      />
+
+      {renderEdgeAnnotations(
+        edge,
+        workflow,
+        midX,
+        annotationY,
+        availableWidth,
+        onEventClick
+      )}
     </g>
   )
 }
 
-export function WorkflowDiagram({ workflow, height = 760, onStepClick }: Props) {
+export function WorkflowDiagram({
+  workflow,
+  height = 760,
+  editable = false,
+  onStepClick,
+  onStartClick,
+  onEventClick,
+  onLayoutChange,
+}: Props) {
+  const svgRef = useRef<SVGSVGElement | null>(null)
+
   const [scale, setScale] = useState(1)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
+  const [nodePositions, setNodePositions] = useState<
+    Record<string, WorkflowNodePosition>
+  >(workflow.layout?.nodePositions ?? {})
 
-  const { nodes, edges, width, height: diagramHeight, topReturnY } = useMemo(
-    () => buildDiagram(workflow),
-    [workflow]
+  const latestPositionsRef = useRef<Record<string, WorkflowNodePosition>>(
+    workflow.layout?.nodePositions ?? {}
   )
+
+  const dragRef = useRef<{
+    nodeId: string
+    startPointerX: number
+    startPointerY: number
+    startNodeX: number
+    startNodeY: number
+    moved: boolean
+  } | null>(null)
+
+  const suppressClickRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const next = workflow.layout?.nodePositions ?? {}
+    setNodePositions(next)
+    latestPositionsRef.current = next
+  }, [workflow])
+
+  const baseDiagram = useMemo(() => buildDiagram(workflow), [workflow])
+
+  const nodes = useMemo(
+    () => applyManualPositions(baseDiagram.nodes, nodePositions),
+    [baseDiagram.nodes, nodePositions]
+  )
+
+  const edges = baseDiagram.edges
+  const width = baseDiagram.width
+  const diagramHeight = baseDiagram.height
+  const topReturnY = baseDiagram.topReturnY
+
+  const nodeMap = useMemo(
+    () => new Map(nodes.map((node) => [node.id, node])),
+    [nodes]
+  )
+
+  const svgHeight = Math.max(height, diagramHeight)
+
+  const clientToSvgPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const svg = svgRef.current
+      if (!svg) return null
+
+      const rect = svg.getBoundingClientRect()
+
+      return {
+        x: (clientX - rect.left) / scale,
+        y: (clientY - rect.top) / scale,
+      }
+    },
+    [scale]
+  )
+
+  const shouldIgnoreNodeClick = useCallback((nodeId: string) => {
+    if (suppressClickRef.current !== nodeId) return false
+    suppressClickRef.current = null
+    return true
+  }, [])
+
+  const handleNodeMouseDown = useCallback(
+    (event: ReactMouseEvent<SVGGElement, MouseEvent>, node: DiagramNode) => {
+      if (!editable) return
+      if (event.button !== 0) return
+
+      const point = clientToSvgPoint(event.clientX, event.clientY)
+      if (!point) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      setDraggingNodeId(node.id)
+
+      dragRef.current = {
+        nodeId: node.id,
+        startPointerX: point.x,
+        startPointerY: point.y,
+        startNodeX: node.x,
+        startNodeY: node.y,
+        moved: false,
+      }
+    },
+    [editable, clientToSvgPoint]
+  )
+
+  useEffect(() => {
+    if (!draggingNodeId) return
+
+    function handleMouseMove(event: MouseEvent) {
+      const drag = dragRef.current
+      if (!drag) return
+
+      const point = clientToSvgPoint(event.clientX, event.clientY)
+      if (!point) return
+
+      const dx = point.x - drag.startPointerX
+      const dy = point.y - drag.startPointerY
+
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        drag.moved = true
+      }
+
+      const nextX = clamp(drag.startNodeX + dx, 50, width - 50)
+      const nextY = clamp(drag.startNodeY + dy, 60, svgHeight - 60)
+
+      setNodePositions((prev) => {
+        const next = {
+          ...prev,
+          [drag.nodeId]: {
+            x: nextX,
+            y: nextY,
+          },
+        }
+
+        latestPositionsRef.current = next
+        return next
+      })
+    }
+
+    function handleMouseUp() {
+      const drag = dragRef.current
+
+      if (drag?.moved) {
+        suppressClickRef.current = drag.nodeId
+        onLayoutChange?.(latestPositionsRef.current)
+      }
+
+      dragRef.current = null
+      setDraggingNodeId(null)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [draggingNodeId, clientToSvgPoint, onLayoutChange, width, svgHeight])
+
+  const zoomIn = () =>
+    setScale((prev) => Math.min(2, Number((prev + 0.1).toFixed(2))))
+  const zoomOut = () =>
+    setScale((prev) => Math.max(0.5, Number((prev - 0.1).toFixed(2))))
+  const resetZoom = () => setScale(1)
+
+  const resetLayout = () => {
+    setNodePositions({})
+    latestPositionsRef.current = {}
+    onLayoutChange?.({})
+  }
 
   if (!nodes.length) {
     return <Empty description="Nenhum fluxo para exibir" />
   }
-
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]))
-  const svgHeight = Math.max(height, diagramHeight)
-
-  const zoomIn = () => setScale((prev) => Math.min(2, Number((prev + 0.1).toFixed(2))))
-  const zoomOut = () => setScale((prev) => Math.max(0.5, Number((prev - 0.1).toFixed(2))))
-  const resetZoom = () => setScale(1)
 
   return (
     <Card
@@ -652,13 +1349,31 @@ export function WorkflowDiagram({ workflow, height = 760, onStepClick }: Props) 
       style={{ borderRadius: 16, background: '#f8fafc' }}
       extra={
         <Space>
-          <Button icon={<ZoomOutOutlined />} onClick={zoomOut}>Diminuir</Button>
-          <Button icon={<ExpandOutlined />} onClick={resetZoom}>Resetar</Button>
-          <Button icon={<ZoomInOutlined />} onClick={zoomIn}>Aumentar</Button>
+          {editable && (
+            <Button icon={<DragOutlined />} onClick={resetLayout}>
+              Resetar layout
+            </Button>
+          )}
+          <Button icon={<ZoomOutOutlined />} onClick={zoomOut}>
+            Diminuir
+          </Button>
+          <Button icon={<ExpandOutlined />} onClick={resetZoom}>
+            Resetar zoom
+          </Button>
+          <Button icon={<ZoomInOutlined />} onClick={zoomIn}>
+            Aumentar
+          </Button>
         </Space>
       }
     >
-      <div style={{ overflow: 'auto', width: '100%', maxHeight: 720, borderRadius: 12 }}>
+      <div
+        style={{
+          overflow: 'auto',
+          width: '100%',
+          maxHeight: 720,
+          borderRadius: 12,
+        }}
+      >
         <div
           style={{
             width,
@@ -667,35 +1382,69 @@ export function WorkflowDiagram({ workflow, height = 760, onStepClick }: Props) 
             transformOrigin: 'top left',
           }}
         >
-          <svg width={width} height={svgHeight}>
+          <svg ref={svgRef} width={width} height={svgHeight}>
             <defs>
-              <pattern id="smallGrid" width="24" height="24" patternUnits="userSpaceOnUse">
-                <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#eef2f7" strokeWidth="1" />
+              <pattern
+                id="smallGrid"
+                width="24"
+                height="24"
+                patternUnits="userSpaceOnUse"
+              >
+                <path
+                  d="M 24 0 L 0 0 0 24"
+                  fill="none"
+                  stroke="#eef2f7"
+                  strokeWidth="1"
+                />
               </pattern>
-              <filter id="nodeShadow" x="-10%" y="-10%" width="120%" height="120%">
-                <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.08)" />
-              </filter>
-              <filter id="nodeHover" x="-10%" y="-10%" width="120%" height="120%">
-                <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="rgba(22,119,255,0.18)" />
-              </filter>
             </defs>
 
             <rect width="100%" height="100%" fill="url(#smallGrid)" />
 
-            {edges.filter((e) => e.kind !== 'return').map((e) => renderForwardEdge(e, nodeMap))}
-            {edges.filter((e) => e.kind === 'return').map((e) => renderReturnEdge(e, nodeMap, topReturnY))}
-            {nodes.map((node) => renderNode(node, onStepClick, hoveredNodeId, setHoveredNodeId))}
+            {edges
+              .filter((edge) => edge.kind !== 'return')
+              .map((edge) =>
+                renderForwardEdge(edge, nodeMap, workflow, onEventClick)
+              )}
+
+            {edges
+              .filter((edge) => edge.kind === 'return')
+              .map((edge) =>
+                renderReturnEdge(
+                  edge,
+                  nodeMap,
+                  topReturnY,
+                  workflow,
+                  onEventClick
+                )
+              )}
+
+            {nodes.map((node) =>
+              renderNode(
+                node,
+                workflow,
+                editable,
+                draggingNodeId,
+                handleNodeMouseDown,
+                shouldIgnoreNodeClick,
+                onStepClick,
+                onStartClick,
+                onEventClick,
+                hoveredNodeId,
+                setHoveredNodeId
+              )
+            )}
           </svg>
         </div>
       </div>
 
-      {onStepClick && (
-        <div style={{ marginTop: 12 }}>
-          <Text type="secondary">
-            💡 Clique em uma atividade no diagrama para visualizar e editar suas configurações.
-          </Text>
-        </div>
-      )}
+      <div style={{ marginTop: 12 }}>
+        <Text type="secondary">
+          {editable
+            ? '💡 Arraste os nós para organizar manualmente o diagrama. Ao soltar, o layout é enviado para persistência.'
+            : '💡 Clique nos elementos do diagrama para visualizar e editar suas configurações.'}
+        </Text>
+      </div>
     </Card>
   )
 }

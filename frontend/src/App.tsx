@@ -36,10 +36,11 @@
   import { DashboardPage } from './pages/Dashboard/DashboardPage'
   import { LDPage } from './pages/LD'
   import { DocumentTypesPage } from './pages/DocumentTypes'
-  import { WorkflowsPage } from './pages/Workflows'
+  import { WorkflowsPage } from './pages/Workflows/WorkflowsPage'
   import { WorkflowDetailPage } from './pages/Workflows/WorkflowDetail'
   import { WorkflowEditPage } from './pages/Workflows/WorkflowEditPage'
   import { WorkflowNewPage } from './pages/Workflows/WorkflowNew'
+  import { NotificationTemplatesPage } from './pages/Notifications/NotificationTemplatesPage'
   import { DocumentsPage } from './pages/Documents'
   import { DocumentNewPage } from './pages/Documents/DocumentNew'
   import { DocumentDetailPage } from './pages/Documents/DocumentDetail'
@@ -684,6 +685,7 @@
                 <Route path="/metadata" element={<MetadataPage />} />
                 <Route path="/organization" element={<OrganizationPage />} />
                 <Route path="/environment-settings" element={<EnvironmentSettingsPage />} />
+                <Route path="/notifications" element={<NotificationTemplatesPage />} />
               </Routes>
             </div>
           </Content>

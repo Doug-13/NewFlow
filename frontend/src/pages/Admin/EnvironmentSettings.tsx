@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -15,10 +15,12 @@ import {
   Space,
   Spin,
   Switch,
+  Tabs,
   Typography,
   message,
 } from 'antd'
 import {
+  BellOutlined,
   MinusCircleOutlined,
   PlusOutlined,
   SaveOutlined,
@@ -34,6 +36,8 @@ import {
 } from '../../api/metadataDefinitions'
 import { useAuthStore } from '../../store/authStore'
 import type { EnvironmentSettings, CodingRulePart } from '../../types/environmentSettings'
+import { WorkflowsPage } from '../Workflows/WorkflowsPage'
+import { NotificationTemplatesPage } from '../Notifications/NotificationTemplatesPage'
 
 const { Title, Text } = Typography
 
@@ -62,7 +66,7 @@ const DEFAULT_VALUES: EnvironmentSettings = {
   },
   deadlines: {
     totalProcessDays: 15,
-  }
+  },
 }
 
 function normalizeSettings(values?: Partial<EnvironmentSettings> | null): EnvironmentSettings {
@@ -79,9 +83,9 @@ function normalizeSettings(values?: Partial<EnvironmentSettings> | null): Enviro
       parts:
         values?.codingRule?.parts?.length
           ? values.codingRule.parts.map(part => ({
-            ...part,
-            separatorAfter: part.separatorAfter ?? '',
-          }))
+              ...part,
+              separatorAfter: part.separatorAfter ?? '',
+            }))
           : DEFAULT_VALUES.codingRule.parts,
     },
     sequential: {
@@ -138,6 +142,7 @@ function buildCodePreview(
 
 export function EnvironmentSettingsPage() {
   const [form] = Form.useForm<EnvironmentSettings>()
+  const [activeTab, setActiveTab] = useState('environment')
   const user = useAuthStore(s => s.user)
 
   const tenantId = user?.tenantId
@@ -256,377 +261,426 @@ export function EnvironmentSettingsPage() {
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
       <div>
         <Title level={3} style={{ marginBottom: 4 }}>
-          <SettingOutlined /> Configurações de ambiente
+          <SettingOutlined /> Configurações do ambiente
         </Title>
         <Text type="secondary">
-          Defina regras globais de revisão, criação, codificação, sequencial e prazos.
+          Gerencie regras globais do ambiente, workflows e notificações do sistema.
         </Text>
       </div>
 
-      <Alert
-        type="info"
-        showIcon
-        message="Estas configurações impactam a forma como documentos e processos serão criados no ambiente."
-      />
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'environment',
+            label: 'Configurações de ambiente',
+            children: (
+              <>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Estas configurações impactam a forma como documentos e processos serão criados no ambiente."
+                  style={{ marginBottom: 16 }}
+                />
 
-      <Form<EnvironmentSettings>
-        form={form}
-        layout="vertical"
-        onFinish={handleSubmit}
-        initialValues={DEFAULT_VALUES}
-      >
-        <Row gutter={[16, 16]}>
-          <Col xs={24} xl={12}>
-            <Card title="Revisão">
-              <Row gutter={16}>
-                <Col span={24}>
-                  <Form.Item
-                    label="Padrão de revisão"
-                    name={['revision', 'pattern']}
-                    rules={[{ required: true, message: 'Selecione o padrão de revisão' }]}
-                  >
-                    <Radio.Group onChange={e => handleRevisionPatternChange(e.target.value)}>
-                      <Radio value="numeric">Numérica</Radio>
-                      <Radio value="alphabetic">Alfabética</Radio>
-                      <Radio value="alphanumeric">Alfanumérica</Radio>
-                    </Radio.Group>
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item noStyle shouldUpdate>
-                    {({ getFieldValue }) => {
-                      const pattern = getFieldValue(['revision', 'pattern']) as
-                        | 'numeric'
-                        | 'alphabetic'
-                        | 'alphanumeric'
-                        | undefined
-
-                      const placeholder =
-                        pattern === 'alphabetic'
-                          ? 'Ex: AA'
-                          : pattern === 'alphanumeric'
-                            ? 'Ex: A1'
-                            : 'Ex: 00'
-
-                      return (
-                        <Form.Item
-                          label="Valor inicial"
-                          name={['revision', 'initialValue']}
-                          rules={[{ required: true, message: 'Informe o valor inicial' }]}
-                        >
-                          <Input placeholder={placeholder} />
-                        </Form.Item>
-                      )
-                    }}
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Incrementar ao aprovar"
-                    name={['revision', 'autoIncrementOnApproval']}
-                    valuePropName="checked"
-                  >
-                    <Switch />
-                  </Form.Item>
-                </Col>
-
-                <Col span={24}>
-                  <Form.Item
-                    label="Permitir edição manual da revisão"
-                    name={['revision', 'allowManualEdition']}
-                    valuePropName="checked"
-                  >
-                    <Switch />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-
-          <Col xs={24} xl={12}>
-            <Card title="Modo de criação">
-              <Row gutter={16}>
-                <Col span={24}>
-                  <Form.Item
-                    label="Forma de criação"
-                    name={['creationMode', 'mode']}
-                    rules={[{ required: true, message: 'Selecione o modo de criação' }]}
-                  >
-                    <Radio.Group>
-                      <Radio value="manual">Somente manual</Radio>
-                      <Radio value="batch">Somente em lote</Radio>
-                      <Radio value="both">Manual e em lote</Radio>
-                    </Radio.Group>
-                  </Form.Item>
-                </Col>
-
-                <Col span={24}>
-                  <Form.Item
-                    label="Exigir template na criação em lote"
-                    name={['creationMode', 'requireTemplateInBatch']}
-                    valuePropName="checked"
-                  >
-                    <Switch />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-
-          <Col xs={24}>
-            <Card title="Regra de codificação">
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <div
-                  style={{
-                    padding: 12,
-                    borderRadius: 12,
-                    background: '#fafafa',
-                    border: '1px solid #f0f0f0',
-                  }}
+                <Form<EnvironmentSettings>
+                  form={form}
+                  layout="vertical"
+                  onFinish={handleSubmit}
+                  initialValues={DEFAULT_VALUES}
                 >
-                  <Text type="secondary">Exemplo do código gerado:</Text>
-                  <div style={{ marginTop: 4 }}>
-                    <Text strong style={{ fontSize: 16 }}>
-                      {previewCode || '—'}
-                    </Text>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '180px minmax(220px, 1fr) 180px 90px',
-                    gap: 12,
-                    padding: '0 4px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#8c8c8c',
-                  }}
-                >
-                  <div>Tipo</div>
-                  <div>Valor</div>
-                  <div>Separador após</div>
-                  <div>Ações</div>
-                </div>
-
-                <Form.List name={['codingRule', 'parts']}>
-                  {(fields, { add, remove }) => (
-                    <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                      {fields.map(field => (
-                        <div
-                          key={field.key}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '180px minmax(220px, 1fr) 180px 90px',
-                            gap: 12,
-                            alignItems: 'start',
-                            padding: 12,
-                            border: '1px solid #f0f0f0',
-                            borderRadius: 12,
-                            background: '#fff',
-                          }}
-                        >
-                          <Form.Item
-                            name={[field.name, 'type']}
-                            rules={[{ required: true, message: 'Selecione o tipo' }]}
-                            style={{ marginBottom: 0 }}
-                          >
-                            <Select
-                              placeholder="Tipo"
-                              options={[
-                                { label: 'Valor fixo', value: 'fixed' },
-                                { label: 'Metadado', value: 'metadata' },
-                                { label: 'Ano', value: 'year' },
-                                { label: 'Unidade', value: 'unit' },
-                                { label: 'Área', value: 'area' },
-                                { label: 'Processo', value: 'process' },
-                                { label: 'Sequencial', value: 'sequential' },
-                              ]}
-                            />
-                          </Form.Item>
-
-                          <Form.Item
-                            noStyle
-                            shouldUpdate={(prev, curr) =>
-                              prev?.codingRule?.parts?.[field.name]?.type !==
-                              curr?.codingRule?.parts?.[field.name]?.type
-                            }
-                          >
-                            {({ getFieldValue }) => {
-                              const type = getFieldValue([
-                                'codingRule',
-                                'parts',
-                                field.name,
-                                'type',
-                              ])
-
-                              if (type === 'fixed') {
-                                return (
-                                  <Form.Item
-                                    name={[field.name, 'fixedValue']}
-                                    rules={[{ required: true, message: 'Informe o valor fixo' }]}
-                                    style={{ marginBottom: 0 }}
-                                  >
-                                    <Input placeholder="Ex: DOC, ENG, FOR..." />
-                                  </Form.Item>
-                                )
-                              }
-
-                              if (type === 'metadata') {
-                                return (
-                                  <Form.Item
-                                    name={[field.name, 'metadataDefinitionId']}
-                                    rules={[{ required: true, message: 'Selecione o metadado' }]}
-                                    style={{ marginBottom: 0 }}
-                                  >
-                                    <Select
-                                      placeholder="Selecione um metadado"
-                                      options={metadataOptions}
-                                    />
-                                  </Form.Item>
-                                )
-                              }
-
-                              return (
-                                <Input
-                                  disabled
-                                  value="Preenchimento automático"
-                                  style={{ width: '100%' }}
-                                />
-                              )
-                            }}
-                          </Form.Item>
-
-                          <Form.Item
-                            name={[field.name, 'separatorAfter']}
-                            style={{ marginBottom: 0 }}
-                          >
-                            <Select
-                              placeholder="Separador"
-                              options={[
-                                { label: 'Sem separador', value: '' },
-                                { label: '-', value: '-' },
-                                { label: '/', value: '/' },
-                                { label: '.', value: '.' },
-                              ]}
-                            />
-                          </Form.Item>
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                            <Button
-                              danger
-                              type="text"
-                              icon={<MinusCircleOutlined />}
-                              onClick={() => remove(field.name)}
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} xl={12}>
+                      <Card title="Revisão">
+                        <Row gutter={16}>
+                          <Col span={24}>
+                            <Form.Item
+                              label="Padrão de revisão"
+                              name={['revision', 'pattern']}
+                              rules={[{ required: true, message: 'Selecione o padrão de revisão' }]}
                             >
-                              Remover
-                            </Button>
+                              <Radio.Group
+                                onChange={e => handleRevisionPatternChange(e.target.value)}
+                              >
+                                <Radio value="numeric">Numérica</Radio>
+                                <Radio value="alphabetic">Alfabética</Radio>
+                                <Radio value="alphanumeric">Alfanumérica</Radio>
+                              </Radio.Group>
+                            </Form.Item>
+                          </Col>
+
+                          <Col xs={24} md={12}>
+                            <Form.Item noStyle shouldUpdate>
+                              {({ getFieldValue }) => {
+                                const pattern = getFieldValue(['revision', 'pattern']) as
+                                  | 'numeric'
+                                  | 'alphabetic'
+                                  | 'alphanumeric'
+                                  | undefined
+
+                                const placeholder =
+                                  pattern === 'alphabetic'
+                                    ? 'Ex: AA'
+                                    : pattern === 'alphanumeric'
+                                      ? 'Ex: A1'
+                                      : 'Ex: 00'
+
+                                return (
+                                  <Form.Item
+                                    label="Valor inicial"
+                                    name={['revision', 'initialValue']}
+                                    rules={[
+                                      { required: true, message: 'Informe o valor inicial' },
+                                    ]}
+                                  >
+                                    <Input placeholder={placeholder} />
+                                  </Form.Item>
+                                )
+                              }}
+                            </Form.Item>
+                          </Col>
+
+                          <Col xs={24} md={12}>
+                            <Form.Item
+                              label="Incrementar ao aprovar"
+                              name={['revision', 'autoIncrementOnApproval']}
+                              valuePropName="checked"
+                            >
+                              <Switch />
+                            </Form.Item>
+                          </Col>
+
+                          <Col span={24}>
+                            <Form.Item
+                              label="Permitir edição manual da revisão"
+                              name={['revision', 'allowManualEdition']}
+                              valuePropName="checked"
+                            >
+                              <Switch />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+
+                    <Col xs={24} xl={12}>
+                      <Card title="Modo de criação">
+                        <Row gutter={16}>
+                          <Col span={24}>
+                            <Form.Item
+                              label="Forma de criação"
+                              name={['creationMode', 'mode']}
+                              rules={[{ required: true, message: 'Selecione o modo de criação' }]}
+                            >
+                              <Radio.Group>
+                                <Radio value="manual">Somente manual</Radio>
+                                <Radio value="batch">Somente em lote</Radio>
+                                <Radio value="both">Manual e em lote</Radio>
+                              </Radio.Group>
+                            </Form.Item>
+                          </Col>
+
+                          <Col span={24}>
+                            <Form.Item
+                              label="Exigir template na criação em lote"
+                              name={['creationMode', 'requireTemplateInBatch']}
+                              valuePropName="checked"
+                            >
+                              <Switch />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+
+                    <Col xs={24}>
+                      <Card title="Regra de codificação">
+                        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                          <div
+                            style={{
+                              padding: 12,
+                              borderRadius: 12,
+                              background: '#fafafa',
+                              border: '1px solid #f0f0f0',
+                            }}
+                          >
+                            <Text type="secondary">Exemplo do código gerado:</Text>
+                            <div style={{ marginTop: 4 }}>
+                              <Text strong style={{ fontSize: 16 }}>
+                                {previewCode || '—'}
+                              </Text>
+                            </div>
                           </div>
-                        </div>
-                      ))}
 
-                      <Button
-                        type="dashed"
-                        icon={<PlusOutlined />}
-                        onClick={() =>
-                          add({
-                            type: 'fixed',
-                            fixedValue: '',
-                            separatorAfter: '',
-                          })
-                        }
-                        block
-                      >
-                        Adicionar tópico
-                      </Button>
-                    </Space>
-                  )}
-                </Form.List>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '180px minmax(220px, 1fr) 180px 90px',
+                              gap: 12,
+                              padding: '0 4px',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: '#8c8c8c',
+                            }}
+                          >
+                            <div>Tipo</div>
+                            <div>Valor</div>
+                            <div>Separador após</div>
+                            <div>Ações</div>
+                          </div>
+
+                          <Form.List name={['codingRule', 'parts']}>
+                            {(fields, { add, remove }) => (
+                              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                                {fields.map(field => (
+                                  <div
+                                    key={field.key}
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns:
+                                        '180px minmax(220px, 1fr) 180px 90px',
+                                      gap: 12,
+                                      alignItems: 'start',
+                                      padding: 12,
+                                      border: '1px solid #f0f0f0',
+                                      borderRadius: 12,
+                                      background: '#fff',
+                                    }}
+                                  >
+                                    <Form.Item
+                                      name={[field.name, 'type']}
+                                      rules={[{ required: true, message: 'Selecione o tipo' }]}
+                                      style={{ marginBottom: 0 }}
+                                    >
+                                      <Select
+                                        placeholder="Tipo"
+                                        options={[
+                                          { label: 'Valor fixo', value: 'fixed' },
+                                          { label: 'Metadado', value: 'metadata' },
+                                          { label: 'Ano', value: 'year' },
+                                          { label: 'Unidade', value: 'unit' },
+                                          { label: 'Área', value: 'area' },
+                                          { label: 'Processo', value: 'process' },
+                                          { label: 'Sequencial', value: 'sequential' },
+                                        ]}
+                                      />
+                                    </Form.Item>
+
+                                    <Form.Item
+                                      noStyle
+                                      shouldUpdate={(prev, curr) =>
+                                        prev?.codingRule?.parts?.[field.name]?.type !==
+                                        curr?.codingRule?.parts?.[field.name]?.type
+                                      }
+                                    >
+                                      {({ getFieldValue }) => {
+                                        const type = getFieldValue([
+                                          'codingRule',
+                                          'parts',
+                                          field.name,
+                                          'type',
+                                        ])
+
+                                        if (type === 'fixed') {
+                                          return (
+                                            <Form.Item
+                                              name={[field.name, 'fixedValue']}
+                                              rules={[
+                                                {
+                                                  required: true,
+                                                  message: 'Informe o valor fixo',
+                                                },
+                                              ]}
+                                              style={{ marginBottom: 0 }}
+                                            >
+                                              <Input placeholder="Ex: DOC, ENG, FOR..." />
+                                            </Form.Item>
+                                          )
+                                        }
+
+                                        if (type === 'metadata') {
+                                          return (
+                                            <Form.Item
+                                              name={[field.name, 'metadataDefinitionId']}
+                                              rules={[
+                                                {
+                                                  required: true,
+                                                  message: 'Selecione o metadado',
+                                                },
+                                              ]}
+                                              style={{ marginBottom: 0 }}
+                                            >
+                                              <Select
+                                                placeholder="Selecione um metadado"
+                                                options={metadataOptions}
+                                              />
+                                            </Form.Item>
+                                          )
+                                        }
+
+                                        return (
+                                          <Input
+                                            disabled
+                                            value="Preenchimento automático"
+                                            style={{ width: '100%' }}
+                                          />
+                                        )
+                                      }}
+                                    </Form.Item>
+
+                                    <Form.Item
+                                      name={[field.name, 'separatorAfter']}
+                                      style={{ marginBottom: 0 }}
+                                    >
+                                      <Select
+                                        placeholder="Separador"
+                                        options={[
+                                          { label: 'Sem separador', value: '' },
+                                          { label: '-', value: '-' },
+                                          { label: '/', value: '/' },
+                                          { label: '.', value: '.' },
+                                        ]}
+                                      />
+                                    </Form.Item>
+
+                                    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                                      <Button
+                                        danger
+                                        type="text"
+                                        icon={<MinusCircleOutlined />}
+                                        onClick={() => remove(field.name)}
+                                      >
+                                        Remover
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+
+                                <Button
+                                  type="dashed"
+                                  icon={<PlusOutlined />}
+                                  onClick={() =>
+                                    add({
+                                      type: 'fixed',
+                                      fixedValue: '',
+                                      separatorAfter: '',
+                                    })
+                                  }
+                                  block
+                                >
+                                  Adicionar tópico
+                                </Button>
+                              </Space>
+                            )}
+                          </Form.List>
+                        </Space>
+                      </Card>
+                    </Col>
+
+                    {hasSequentialPart && (
+                      <Col xs={24} xl={12}>
+                        <Card title="Sequencial">
+                          <Row gutter={16}>
+                            <Col xs={24} md={8}>
+                              <Form.Item
+                                label="Iniciar em"
+                                name={['sequential', 'startAt']}
+                                rules={[{ required: true, message: 'Informe o início' }]}
+                              >
+                                <InputNumber min={1} style={{ width: '100%' }} />
+                              </Form.Item>
+                            </Col>
+
+                            <Col xs={24} md={8}>
+                              <Form.Item
+                                label="Quantidade de dígitos"
+                                name={['sequential', 'digits']}
+                                rules={[{ required: true, message: 'Informe os dígitos' }]}
+                              >
+                                <InputNumber min={1} max={10} style={{ width: '100%' }} />
+                              </Form.Item>
+                            </Col>
+
+                            <Col xs={24} md={8}>
+                              <Form.Item
+                                label="Reinício"
+                                name={['sequential', 'resetPeriod']}
+                                rules={[{ required: true, message: 'Selecione o reinício' }]}
+                              >
+                                <Select
+                                  options={[
+                                    { label: 'Nunca', value: 'never' },
+                                    { label: 'Anual', value: 'yearly' },
+                                    { label: 'Mensal', value: 'monthly' },
+                                  ]}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                        </Card>
+                      </Col>
+                    )}
+
+                    <Col span={24}>
+                      <Card title="Prazo do processo">
+                        <Row gutter={16}>
+                          <Col xs={24} md={12} xl={8}>
+                            <Form.Item
+                              label="Prazo total para conclusão do processo"
+                              name={['deadlines', 'totalProcessDays']}
+                              rules={[{ required: true, message: 'Informe o prazo total' }]}
+                              extra="Tempo esperado para o documento chegar ao fim do processo."
+                            >
+                              <InputNumber
+                                min={0}
+                                style={{ width: '100%' }}
+                                addonAfter="dias"
+                              />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+                  </Row>
+
+                  <Divider />
+
+                  <Space>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      icon={<SaveOutlined />}
+                      loading={saveMutation.isPending}
+                    >
+                      Salvar configurações
+                    </Button>
+
+                    <Button onClick={() => form.setFieldsValue(DEFAULT_VALUES)}>
+                      Restaurar padrão
+                    </Button>
+                  </Space>
+                </Form>
+              </>
+            ),
+          },
+          {
+            key: 'workflows',
+            label: 'Workflows',
+            children: <WorkflowsPage embedded />,
+          },
+          {
+            key: 'notifications',
+            label: (
+              <Space size={6}>
+                <BellOutlined />
+                <span>Notificações</span>
               </Space>
-            </Card>
-          </Col>
-
-          {hasSequentialPart && (
-            <Col xs={24} xl={12}>
-              <Card title="Sequencial">
-                <Row gutter={16}>
-                  <Col xs={24} md={8}>
-                    <Form.Item
-                      label="Iniciar em"
-                      name={['sequential', 'startAt']}
-                      rules={[{ required: true, message: 'Informe o início' }]}
-                    >
-                      <InputNumber min={1} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-
-                  <Col xs={24} md={8}>
-                    <Form.Item
-                      label="Quantidade de dígitos"
-                      name={['sequential', 'digits']}
-                      rules={[{ required: true, message: 'Informe os dígitos' }]}
-                    >
-                      <InputNumber min={1} max={10} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-
-                  <Col xs={24} md={8}>
-                    <Form.Item
-                      label="Reinício"
-                      name={['sequential', 'resetPeriod']}
-                      rules={[{ required: true, message: 'Selecione o reinício' }]}
-                    >
-                      <Select
-                        options={[
-                          { label: 'Nunca', value: 'never' },
-                          { label: 'Anual', value: 'yearly' },
-                          { label: 'Mensal', value: 'monthly' },
-                        ]}
-                      />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </Card>
-            </Col>
-          )}
-
-          <Col span={24}>
-            <Card title="Prazo do processo">
-              <Row gutter={16}>
-                <Col xs={24} md={12} xl={8}>
-                  <Form.Item
-                    label="Prazo total para conclusão do processo"
-                    name={['deadlines', 'totalProcessDays']}
-                    rules={[{ required: true, message: 'Informe o prazo total' }]}
-                    extra="Tempo esperado para o documento chegar ao fim do processo."
-                  >
-                    <InputNumber min={0} style={{ width: '100%' }} addonAfter="dias" />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-        </Row>
-
-        <Divider />
-
-        <Space>
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<SaveOutlined />}
-            loading={saveMutation.isPending}
-          >
-            Salvar configurações
-          </Button>
-
-          <Button onClick={() => form.setFieldsValue(DEFAULT_VALUES)}>
-            Restaurar padrão
-          </Button>
-        </Space>
-      </Form>
+            ),
+            children: <NotificationTemplatesPage />,
+          },
+        ]}
+      />
     </Space>
   )
 }

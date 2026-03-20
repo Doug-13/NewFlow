@@ -41,20 +41,80 @@ export interface DocumentType {
   createdAt: string
 }
 
+/* =========================================================
+   WORKFLOWS
+========================================================= */
+
+export type WorkflowEventType =
+  | 'notification'
+  | 'flow-change'
+  | 'extra-check'
+  | 'webhook'
+  | 'integration'
+  | 'task'
+
+export type WorkflowEventTrigger =
+  | 'on-start'
+  | 'on-enter'
+  | 'on-exit'
+  | 'on-transition'
+  | 'manual'
+  | 'scheduled'
+
+export type WorkflowExtraCheckType =
+  | 'metadata'
+  | 'document-status'
+  | 'approval'
+  | 'custom'
+
+export type WorkflowEventDefinition = {
+  id: string
+  name: string
+  type: WorkflowEventType
+  trigger?: WorkflowEventTrigger
+  description?: string
+  active?: boolean
+
+  /* Notificações */
+  notificationTemplateIds?: string[]
+  notificationTemplateNames?: string[]
+
+  /* Mudança de fluxo / abertura de outro fluxo */
+  targetWorkflowId?: string
+  targetWorkflowName?: string
+  targetStepId?: string
+  targetStepName?: string
+
+  /* Verificações extras */
+  verificationType?: WorkflowExtraCheckType
+  blocking?: boolean
+
+  /* Campo livre para necessidades futuras */
+  config?: Record<string, unknown>
+}
+
+export type WorkflowStartConfig = {
+  name?: string
+  description?: string
+  initialStepId?: string
+  events?: WorkflowEventDefinition[]
+}
+
 export type WorkflowTransition = {
   id?: string
   triggerAction: string
   toStepId?: string
   toStepOrderIndex?: number
   toStepName?: string
+  events?: WorkflowEventDefinition[]
 }
 
 export type WorkflowResponsible =
   | string
   | {
-    id?: string
-    name: string
-  }
+      id?: string
+      name: string
+    }
 
 export type WorkflowMetadata = {
   id?: string
@@ -81,6 +141,9 @@ export type WorkflowStep = {
   receivesNotification?: boolean
   requiredNotification?: boolean
   metadata?: WorkflowMetadata[]
+
+  /* Eventos da etapa */
+  events?: WorkflowEventDefinition[]
 }
 
 export type Workflow = {
@@ -90,7 +153,13 @@ export type Workflow = {
   version: string | number
   isActive?: boolean
   steps: WorkflowStep[]
+  startConfig?: WorkflowStartConfig
+  layout?: WorkflowLayout
 }
+
+/* =========================================================
+   DOCUMENTOS
+========================================================= */
 
 export interface DocumentFile {
   id: string
@@ -154,7 +223,7 @@ export interface DashboardSummary {
   approvedToday: number
   rejectedToday: number
   myUrgentTasks: ApprovalTask[]
-}
+} 
 
 export interface UserListItem {
   id: string
@@ -163,4 +232,13 @@ export interface UserListItem {
   role: string
   isActive: boolean
   createdAt: string
+}
+
+export type WorkflowNodePosition = {
+  x: number
+  y: number
+}
+
+export type WorkflowLayout = {
+  nodePositions?: Record<string, WorkflowNodePosition>
 }
