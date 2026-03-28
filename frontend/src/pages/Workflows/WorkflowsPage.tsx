@@ -172,7 +172,7 @@ function seedWorkflowsIfEmpty() {
   saveWorkflows(seed)
 }
 
-export function WorkflowsPage() {
+export function WorkflowsPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
