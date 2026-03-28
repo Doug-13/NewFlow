@@ -1,3 +1,5 @@
+import { getStudioElementKind } from './studioElementKinds'
+
 export type WorkflowStatus = 'draft' | 'active' | 'inactive' | 'archived'
 
 export type WorkflowPermissionEntry = {
@@ -15,7 +17,12 @@ export type WorkflowPermissions = {
 }
 
 export const EMPTY_PERMISSION_ENTRY: WorkflowPermissionEntry = {
-  userIds: [], groupIds: [], unitIds: [], areaIds: [], disciplineIds: [], roleIds: [],
+  userIds: [],
+  groupIds: [],
+  unitIds: [],
+  areaIds: [],
+  disciplineIds: [],
+  roleIds: [],
 }
 
 export const EMPTY_WORKFLOW_PERMISSIONS: WorkflowPermissions = {
@@ -39,17 +46,6 @@ export type WorkflowDefinition = {
   publishedAt?: string
 }
 
-
-export type WorkflowVersionSnapshot = {
-  id: string
-  workflowId: string
-  versionLabel: string
-  note?: string
-  workflow: WorkflowDefinition
-  activityConfigs: WorkflowActivityConfig[]
-  createdAt: string
-}
-
 export type WorkflowValidationIssue = {
   id: string
   workflowId: string
@@ -58,6 +54,47 @@ export type WorkflowValidationIssue = {
   code: string
   message: string
 }
+
+export type ActivityActionOutcome =
+  | 'approve'
+  | 'reject'
+  | 'request-changes'
+  | 'forward'
+  | 'custom'
+
+export type ActivityAction = {
+  id: string
+  label: string
+  color: 'green' | 'red' | 'orange' | 'blue' | 'purple' | 'gold' | 'default'
+  outcome: ActivityActionOutcome
+  confirmText?: string
+  requiresComment: boolean
+}
+
+export type ActivityMetadataFieldRule = {
+  metadataDefinitionId: string
+  name?: string
+  label?: string
+  fieldType?: string
+  metadataSetId?: string
+  metadataSetName?: string
+  isRequired: boolean
+  isReadOnly: boolean
+}
+
+export type SendTaskConfig = {
+  notificationTemplateId?: string
+  channel: 'email' | 'in-app' | 'whatsapp' | 'sms' | 'all'
+  recipientRoleIds: string[]
+  recipientUserIds: string[]
+  recipientAreaIds: string[]
+  notifyInitiator: boolean
+  notifyPreviousAssignees: boolean
+  customSubject?: string
+  customBody?: string
+  contextVariables: string[]
+}
+
 export type StartEventConfig = {
   initialMetadataDefinitionIds: string[]
   requiredAttachmentTypes: string[]
@@ -67,6 +104,30 @@ export type StartEventConfig = {
   formTitle?: string
 }
 
+export type ActivityConfig = {
+  assignmentMode: 'user' | 'role' | 'area' | 'function'
+  responsibleUserIds: string[]
+  responsibleRoleIds: string[]
+  responsibleAreaIds: string[]
+  responsibleFunctionIds: string[]
+  deadlineMode: 'hours' | 'days' | 'fixed-date'
+  deadlineValue?: number | string
+
+  metadataSetIds: string[]
+  metadataDefinitionIds: string[]
+  metadataFields?: ActivityMetadataFieldRule[]
+
+  notificationTemplateIds: string[]
+  allowApprove: boolean
+  allowReject: boolean
+  allowRequestChanges: boolean
+  allowForward: boolean
+  instructions?: string
+  helpText?: string
+  actions?: ActivityAction[]
+  linkedWorkflowId?: string
+  sendTask?: SendTaskConfig
+}
 
 export type GatewayConfig = {
   decisionMode: 'manual' | 'metadata-rule' | 'expression'
@@ -96,59 +157,19 @@ export type EndEventConfig = {
   instructions?: string
 }
 
-/**
- * NotificationEventConfig
- *
- * Configuração exclusiva de elementos de NOTIFICAÇÃO DO FLUXO:
- *   bpmn:SendTask, bpmn:IntermediateThrowEvent, bpmn:IntermediateCatchEvent
- *
- * Diferença fundamental em relação a ActivityConfig:
- *   - NÃO tem executor humano  → sem assignmentMode / responsáveis
- *   - NÃO tem prazo de tarefa  → sem deadlineMode / deadlineValue
- *   - NÃO tem ações de decisão → sem allowApprove / actions
- *   É um disparo AUTOMÁTICO do fluxo: apenas template, canal e destinatários.
- */
 export type NotificationEventConfig = {
-  /** ID / slug do template de notificação */
   notificationTemplateId?: string
-  /** Canal de envio */
   channel: 'email' | 'in-app' | 'whatsapp' | 'sms' | 'all'
-  /** Destinatários por cargo / perfil */
   recipientRoleIds: string[]
-  /** Destinatários por usuário específico */
   recipientUserIds: string[]
-  /** Destinatários por área */
   recipientAreaIds: string[]
-  /** Envia também para o iniciador do workflow */
   notifyInitiator: boolean
-  /** Envia para todos os responsáveis da etapa anterior */
   notifyPreviousAssignees: boolean
-  /** Assunto personalizado (sobrescreve o template) */
   customSubject?: string
-  /** Corpo personalizado (sobrescreve o template) */
   customBody?: string
-  /** Variáveis de contexto disponíveis para interpolação no template */
   contextVariables: string[]
 }
 
-/**
- * SystemTaskConfig
- *
- * Configuração da instância de uma tarefa de sistema (bpmn:ServiceTask) no fluxo.
- *
- * INTENCIONALMENTE SIMPLES: o "como" executar (campo de revisão, formato,
- * prefixo, regras de incremento) é definido na configuração do processo /
- * tipo documental, não aqui. Esta config apenas declara "o que" acontece
- * neste ponto do fluxo e permite personalizar notificações e observações
- * para fins de auditoria.
- *
- * Tipos de ação suportados pelo motor:
- *   increment-revision → incrementa a revisão conforme regra do processo
- *   set-metadata       → atribui valor a um metadado (regra no processo)
- *   copy-metadata      → copia valor entre metadados (regra no processo)
- *   http-request       → chama endpoint externo (URL configurada no processo)
- *   custom-script      → executa script definido no processo
- */
 export type SystemTaskActionType =
   | 'increment-revision'
   | 'set-metadata'
@@ -157,24 +178,19 @@ export type SystemTaskActionType =
   | 'custom-script'
 
 export type SystemTaskConfig = {
-  /**
-   * Tipo da ação — declara o que este ponto do fluxo faz.
-   * Os parâmetros de execução (campo, formato, URL, script) ficam
-   * na configuração do processo / tipo documental.
-   */
   actionType: SystemTaskActionType
-
-  /**
-   * Observação de auditoria — aparece no histórico da instância e
-   * no painel de validação. Descreve o efeito esperado neste ponto
-   * do fluxo em linguagem de negócio.
-   * Ex.: "Avança revisão do documento após aprovação gerencial."
-   */
   auditNote?: string
-
-  /** Notificações disparadas imediatamente após a execução */
   notificationTemplateIds: string[]
 }
+
+export type WorkflowElementKind =
+  | 'start'
+  | 'activity'
+  | 'gateway'
+  | 'flow'
+  | 'end'
+  | 'notification'
+  | 'system-task'
 
 export type WorkflowElementConfig = {
   id: string
@@ -182,7 +198,7 @@ export type WorkflowElementConfig = {
   elementId: string
   elementType: string
   elementName?: string
-  kind: 'start' | 'activity' | 'gateway' | 'flow' | 'end' | 'notification' | 'system-task'
+  kind: WorkflowElementKind
   config:
     | StartEventConfig
     | ActivityConfig
@@ -195,9 +211,68 @@ export type WorkflowElementConfig = {
   updatedAt: string
 }
 
+export type WorkflowActivityConfig = {
+  id: string
+  workflowId: string
+  elementId: string
+  elementType: string
+  elementName?: string
+  assignmentMode: 'user' | 'role' | 'area' | 'function'
+  responsibleUserIds: string[]
+  responsibleRoleIds: string[]
+  responsibleAreaIds: string[]
+  responsibleFunctionIds: string[]
+  deadlineMode: 'hours' | 'days' | 'fixed-date'
+  deadlineValue?: number | string
+
+  metadataSetIds: string[]
+  metadataDefinitionIds: string[]
+  metadataFields?: ActivityMetadataFieldRule[]
+
+  notificationTemplateIds: string[]
+  allowApprove: boolean
+  allowReject: boolean
+  allowRequestChanges: boolean
+  allowForward: boolean
+  instructions?: string
+  helpText?: string
+  actions?: ActivityAction[]
+  linkedWorkflowId?: string
+  sendTask?: SendTaskConfig
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowVersionSnapshot = {
+  id: string
+  workflowId: string
+  versionLabel: string
+  note?: string
+  workflow: WorkflowDefinition
+  elementConfigs: WorkflowElementConfig[]
+  createdAt: string
+}
+
 const WORKFLOWS_KEY = 'gestao-docs:workflows'
-const ACTIVITY_CONFIGS_KEY = 'gestao-docs:workflow-activity-configs'
+const ELEMENT_CONFIGS_KEY = 'gestao-docs:workflow-element-configs'
 const SNAPSHOTS_KEY = 'gestao-docs:workflow-snapshots'
+
+const LEGACY_ELEMENT_CONFIGS_KEY = 'workflow-element-configs'
+const LEGACY_ACTIVITY_CONFIGS_KEY = 'gestao-docs:workflow-activity-configs'
+
+function canUseLocalStorage() {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+}
+
+function readStorage(key: string) {
+  if (!canUseLocalStorage()) return null
+  return window.localStorage.getItem(key)
+}
+
+function writeStorage(key: string, value: string) {
+  if (!canUseLocalStorage()) return
+  window.localStorage.setItem(key, value)
+}
 
 function safeParseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback
@@ -206,6 +281,35 @@ function safeParseJson<T>(value: string | null, fallback: T): T {
     return JSON.parse(value) as T
   } catch {
     return fallback
+  }
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
+function normalizePermissionEntry(value: unknown): WorkflowPermissionEntry {
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+
+  return {
+    userIds: toStringArray(raw.userIds),
+    groupIds: toStringArray(raw.groupIds),
+    unitIds: toStringArray(raw.unitIds),
+    areaIds: toStringArray(raw.areaIds),
+    disciplineIds: toStringArray(raw.disciplineIds),
+    roleIds: toStringArray(raw.roleIds),
+  }
+}
+
+function normalizePermissions(value: unknown): WorkflowPermissions | undefined {
+  if (!value || typeof value !== 'object') return undefined
+
+  const raw = value as Record<string, unknown>
+
+  return {
+    visualization: normalizePermissionEntry(raw.visualization),
+    creation: normalizePermissionEntry(raw.creation),
   }
 }
 
@@ -237,12 +341,9 @@ function normalizeWorkflow(item: any): WorkflowDefinition {
       typeof item?.stepsCount === 'number'
         ? item.stepsCount
         : Array.isArray(item?.steps)
-        ? item.steps.length
-        : 0,
-    permissions:
-      item?.permissions && typeof item.permissions === 'object'
-        ? item.permissions
-        : undefined,
+          ? item.steps.length
+          : 0,
+    permissions: normalizePermissions(item?.permissions),
     createdAt:
       typeof item?.createdAt === 'string'
         ? item.createdAt
@@ -256,15 +357,109 @@ function normalizeWorkflow(item: any): WorkflowDefinition {
   }
 }
 
-function normalizeActivityConfig(item: any): WorkflowActivityConfig {
+function normalizeActivityAction(item: any): ActivityAction {
   return {
     id: String(item?.id ?? crypto.randomUUID()),
-    workflowId: String(item?.workflowId ?? ''),
-    elementId: String(item?.elementId ?? ''),
-    elementType: String(item?.elementType ?? ''),
-    elementName:
-      typeof item?.elementName === 'string' ? item.elementName : undefined,
+    label: typeof item?.label === 'string' ? item.label : 'Ação',
+    color:
+      item?.color === 'green' ||
+      item?.color === 'red' ||
+      item?.color === 'orange' ||
+      item?.color === 'blue' ||
+      item?.color === 'purple' ||
+      item?.color === 'gold' ||
+      item?.color === 'default'
+        ? item.color
+        : 'default',
+    outcome:
+      item?.outcome === 'approve' ||
+      item?.outcome === 'reject' ||
+      item?.outcome === 'request-changes' ||
+      item?.outcome === 'forward' ||
+      item?.outcome === 'custom'
+        ? item.outcome
+        : 'custom',
+    confirmText:
+      typeof item?.confirmText === 'string' ? item.confirmText : undefined,
+    requiresComment: Boolean(item?.requiresComment),
+  }
+}
 
+function normalizeSendTaskConfig(item: any): SendTaskConfig | undefined {
+  if (!item || typeof item !== 'object') return undefined
+
+  return {
+    notificationTemplateId:
+      typeof item.notificationTemplateId === 'string'
+        ? item.notificationTemplateId
+        : undefined,
+    channel:
+      item.channel === 'email' ||
+      item.channel === 'in-app' ||
+      item.channel === 'whatsapp' ||
+      item.channel === 'sms' ||
+      item.channel === 'all'
+        ? item.channel
+        : 'email',
+    recipientRoleIds: toStringArray(item.recipientRoleIds),
+    recipientUserIds: toStringArray(item.recipientUserIds),
+    recipientAreaIds: toStringArray(item.recipientAreaIds),
+    notifyInitiator: Boolean(item.notifyInitiator),
+    notifyPreviousAssignees: Boolean(item.notifyPreviousAssignees),
+    customSubject:
+      typeof item.customSubject === 'string' ? item.customSubject : undefined,
+    customBody:
+      typeof item.customBody === 'string' ? item.customBody : undefined,
+    contextVariables: toStringArray(item.contextVariables),
+  }
+}
+
+function normalizeActivityConfigValue(item: any): ActivityConfig {
+  const metadataDefinitionIds: string[] = Array.isArray(item?.metadataDefinitionIds)
+    ? item.metadataDefinitionIds.filter(
+        (value: unknown): value is string => typeof value === 'string',
+      )
+    : []
+
+  const metadataFields: ActivityMetadataFieldRule[] = Array.isArray(item?.metadataFields)
+    ? item.metadataFields
+        .filter(
+          (value: unknown): value is Record<string, unknown> =>
+            Boolean(value) && typeof value === 'object',
+        )
+        .map((field: Record<string, unknown>): ActivityMetadataFieldRule => ({
+          metadataDefinitionId: String(field.metadataDefinitionId ?? ''),
+          name: typeof field.name === 'string' ? field.name : undefined,
+          label: typeof field.label === 'string' ? field.label : undefined,
+          fieldType: typeof field.fieldType === 'string' ? field.fieldType : undefined,
+          metadataSetId:
+            typeof field.metadataSetId === 'string' ? field.metadataSetId : undefined,
+          metadataSetName:
+            typeof field.metadataSetName === 'string'
+              ? field.metadataSetName
+              : undefined,
+          isRequired: Boolean(field.isRequired),
+          isReadOnly: Boolean(field.isReadOnly),
+        }))
+        .filter(
+          (field: ActivityMetadataFieldRule) => Boolean(field.metadataDefinitionId),
+        )
+    : metadataDefinitionIds.map(
+        (id: string): ActivityMetadataFieldRule => ({
+          metadataDefinitionId: id,
+          isRequired: false,
+          isReadOnly: false,
+        }),
+      )
+
+  const resolvedMetadataDefinitionIds: string[] =
+    metadataFields.length > 0
+      ? metadataFields.map(
+          (field: ActivityMetadataFieldRule) => field.metadataDefinitionId,
+        )
+      : metadataDefinitionIds
+
+  return {
     assignmentMode:
       item?.assignmentMode === 'user' ||
       item?.assignmentMode === 'role' ||
@@ -273,18 +468,10 @@ function normalizeActivityConfig(item: any): WorkflowActivityConfig {
         ? item.assignmentMode
         : 'role',
 
-    responsibleUserIds: Array.isArray(item?.responsibleUserIds)
-      ? item.responsibleUserIds.filter((value: unknown) => typeof value === 'string')
-      : [],
-    responsibleRoleIds: Array.isArray(item?.responsibleRoleIds)
-      ? item.responsibleRoleIds.filter((value: unknown) => typeof value === 'string')
-      : [],
-    responsibleAreaIds: Array.isArray(item?.responsibleAreaIds)
-      ? item.responsibleAreaIds.filter((value: unknown) => typeof value === 'string')
-      : [],
-    responsibleFunctionIds: Array.isArray(item?.responsibleFunctionIds)
-      ? item.responsibleFunctionIds.filter((value: unknown) => typeof value === 'string')
-      : [],
+    responsibleUserIds: toStringArray(item?.responsibleUserIds),
+    responsibleRoleIds: toStringArray(item?.responsibleRoleIds),
+    responsibleAreaIds: toStringArray(item?.responsibleAreaIds),
+    responsibleFunctionIds: toStringArray(item?.responsibleFunctionIds),
 
     deadlineMode:
       item?.deadlineMode === 'hours' ||
@@ -299,12 +486,11 @@ function normalizeActivityConfig(item: any): WorkflowActivityConfig {
         ? item.deadlineValue
         : undefined,
 
-    metadataDefinitionIds: Array.isArray(item?.metadataDefinitionIds)
-      ? item.metadataDefinitionIds.filter((value: unknown) => typeof value === 'string')
-      : [],
-    notificationTemplateIds: Array.isArray(item?.notificationTemplateIds)
-      ? item.notificationTemplateIds.filter((value: unknown) => typeof value === 'string')
-      : [],
+    metadataSetIds: toStringArray(item?.metadataSetIds),
+    metadataDefinitionIds: resolvedMetadataDefinitionIds,
+    metadataFields,
+
+    notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
 
     allowApprove: Boolean(item?.allowApprove ?? true),
     allowReject: Boolean(item?.allowReject ?? true),
@@ -315,6 +501,253 @@ function normalizeActivityConfig(item: any): WorkflowActivityConfig {
       typeof item?.instructions === 'string' ? item.instructions : undefined,
     helpText: typeof item?.helpText === 'string' ? item.helpText : undefined,
 
+    actions: Array.isArray(item?.actions)
+      ? item.actions.map(normalizeActivityAction)
+      : undefined,
+
+    linkedWorkflowId:
+      typeof item?.linkedWorkflowId === 'string'
+        ? item.linkedWorkflowId
+        : undefined,
+
+    sendTask: normalizeSendTaskConfig(item?.sendTask),
+  }
+}
+
+function buildActivityElementConfigPayload(
+  item: Pick<
+    WorkflowActivityConfig,
+    | 'assignmentMode'
+    | 'responsibleUserIds'
+    | 'responsibleRoleIds'
+    | 'responsibleAreaIds'
+    | 'responsibleFunctionIds'
+    | 'deadlineMode'
+    | 'deadlineValue'
+    | 'metadataSetIds'
+    | 'metadataDefinitionIds'
+    | 'metadataFields'
+    | 'notificationTemplateIds'
+    | 'allowApprove'
+    | 'allowReject'
+    | 'allowRequestChanges'
+    | 'allowForward'
+    | 'instructions'
+    | 'helpText'
+    | 'actions'
+    | 'linkedWorkflowId'
+    | 'sendTask'
+  >,
+): ActivityConfig {
+  return {
+    assignmentMode: item.assignmentMode,
+    responsibleUserIds: item.responsibleUserIds,
+    responsibleRoleIds: item.responsibleRoleIds,
+    responsibleAreaIds: item.responsibleAreaIds,
+    responsibleFunctionIds: item.responsibleFunctionIds,
+    deadlineMode: item.deadlineMode,
+    deadlineValue: item.deadlineValue,
+
+    metadataSetIds: item.metadataSetIds,
+    metadataDefinitionIds: item.metadataDefinitionIds,
+    metadataFields: item.metadataFields,
+
+    notificationTemplateIds: item.notificationTemplateIds,
+    allowApprove: item.allowApprove,
+    allowReject: item.allowReject,
+    allowRequestChanges: item.allowRequestChanges,
+    allowForward: item.allowForward,
+    instructions: item.instructions,
+    helpText: item.helpText,
+    actions: item.actions,
+    linkedWorkflowId: item.linkedWorkflowId,
+    sendTask: item.sendTask,
+  }
+}
+
+function normalizeStartEventConfig(item: any): StartEventConfig {
+  return {
+    initialMetadataDefinitionIds: toStringArray(item?.initialMetadataDefinitionIds),
+    requiredAttachmentTypes: toStringArray(item?.requiredAttachmentTypes),
+    notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
+    allowedStarterRoleIds: toStringArray(item?.allowedStarterRoleIds),
+    instructions:
+      typeof item?.instructions === 'string' ? item.instructions : undefined,
+    formTitle: typeof item?.formTitle === 'string' ? item.formTitle : undefined,
+  }
+}
+
+function normalizeGatewayConfig(item: any): GatewayConfig {
+  return {
+    decisionMode:
+      item?.decisionMode === 'manual' ||
+      item?.decisionMode === 'metadata-rule' ||
+      item?.decisionMode === 'expression'
+        ? item.decisionMode
+        : 'manual',
+    decisionDescription:
+      typeof item?.decisionDescription === 'string'
+        ? item.decisionDescription
+        : undefined,
+    decisionFieldId:
+      typeof item?.decisionFieldId === 'string'
+        ? item.decisionFieldId
+        : undefined,
+    notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
+    instructions:
+      typeof item?.instructions === 'string' ? item.instructions : undefined,
+  }
+}
+
+function normalizeFlowConfig(item: any): FlowConfig {
+  return {
+    label: typeof item?.label === 'string' ? item.label : undefined,
+    conditionType:
+      item?.conditionType === 'always' ||
+      item?.conditionType === 'expression' ||
+      item?.conditionType === 'metadata-value'
+        ? item.conditionType
+        : 'always',
+    expression:
+      typeof item?.expression === 'string' ? item.expression : undefined,
+    metadataFieldId:
+      typeof item?.metadataFieldId === 'string'
+        ? item.metadataFieldId
+        : undefined,
+    expectedValue:
+      typeof item?.expectedValue === 'string' ? item.expectedValue : undefined,
+    isDefault: Boolean(item?.isDefault),
+    notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
+    description:
+      typeof item?.description === 'string' ? item.description : undefined,
+  }
+}
+
+function normalizeEndEventConfig(item: any): EndEventConfig {
+  return {
+    finalMetadataDefinitionIds: toStringArray(item?.finalMetadataDefinitionIds),
+    summarySections: toStringArray(item?.summarySections),
+    notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
+    finalAction:
+      item?.finalAction === 'complete' ||
+      item?.finalAction === 'archive' ||
+      item?.finalAction === 'publish' ||
+      item?.finalAction === 'open-linked-workflow'
+        ? item.finalAction
+        : 'complete',
+    linkedWorkflowId:
+      typeof item?.linkedWorkflowId === 'string'
+        ? item.linkedWorkflowId
+        : undefined,
+    instructions:
+      typeof item?.instructions === 'string' ? item.instructions : undefined,
+  }
+}
+
+function normalizeNotificationEventConfig(item: any): NotificationEventConfig {
+  return {
+    notificationTemplateId:
+      typeof item?.notificationTemplateId === 'string'
+        ? item.notificationTemplateId
+        : undefined,
+    channel:
+      item?.channel === 'email' ||
+      item?.channel === 'in-app' ||
+      item?.channel === 'whatsapp' ||
+      item?.channel === 'sms' ||
+      item?.channel === 'all'
+        ? item.channel
+        : 'email',
+    recipientRoleIds: toStringArray(item?.recipientRoleIds),
+    recipientUserIds: toStringArray(item?.recipientUserIds),
+    recipientAreaIds: toStringArray(item?.recipientAreaIds),
+    notifyInitiator: Boolean(item?.notifyInitiator),
+    notifyPreviousAssignees: Boolean(item?.notifyPreviousAssignees),
+    customSubject:
+      typeof item?.customSubject === 'string' ? item.customSubject : undefined,
+    customBody:
+      typeof item?.customBody === 'string' ? item.customBody : undefined,
+    contextVariables: toStringArray(item?.contextVariables),
+  }
+}
+
+function normalizeSystemTaskConfig(item: any): SystemTaskConfig {
+  return {
+    actionType:
+      item?.actionType === 'increment-revision' ||
+      item?.actionType === 'set-metadata' ||
+      item?.actionType === 'copy-metadata' ||
+      item?.actionType === 'http-request' ||
+      item?.actionType === 'custom-script'
+        ? item.actionType
+        : 'increment-revision',
+    auditNote:
+      typeof item?.auditNote === 'string' ? item.auditNote : undefined,
+    notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
+  }
+}
+
+function normalizeElementKind(kind: unknown, elementType?: string): WorkflowElementKind {
+  if (
+    kind === 'start' ||
+    kind === 'activity' ||
+    kind === 'gateway' ||
+    kind === 'flow' ||
+    kind === 'end' ||
+    kind === 'notification' ||
+    kind === 'system-task'
+  ) {
+    return kind
+  }
+
+  const derived = getStudioElementKind(elementType)
+  if (derived !== 'unsupported') {
+    return derived
+  }
+
+  return 'activity'
+}
+
+function normalizeWorkflowElementConfig(item: any): WorkflowElementConfig {
+  const kind = normalizeElementKind(item?.kind, item?.elementType)
+  const rawConfig = item?.config ?? {}
+
+  let config: WorkflowElementConfig['config']
+
+  switch (kind) {
+    case 'start':
+      config = normalizeStartEventConfig(rawConfig)
+      break
+    case 'gateway':
+      config = normalizeGatewayConfig(rawConfig)
+      break
+    case 'flow':
+      config = normalizeFlowConfig(rawConfig)
+      break
+    case 'end':
+      config = normalizeEndEventConfig(rawConfig)
+      break
+    case 'notification':
+      config = normalizeNotificationEventConfig(rawConfig)
+      break
+    case 'system-task':
+      config = normalizeSystemTaskConfig(rawConfig)
+      break
+    case 'activity':
+    default:
+      config = normalizeActivityConfigValue(rawConfig)
+      break
+  }
+
+  return {
+    id: String(item?.id ?? crypto.randomUUID()),
+    workflowId: String(item?.workflowId ?? ''),
+    elementId: String(item?.elementId ?? ''),
+    elementType: String(item?.elementType ?? ''),
+    elementName:
+      typeof item?.elementName === 'string' ? item.elementName : undefined,
+    kind,
+    config,
     createdAt:
       typeof item?.createdAt === 'string'
         ? item.createdAt
@@ -326,19 +759,101 @@ function normalizeActivityConfig(item: any): WorkflowActivityConfig {
   }
 }
 
-function normalizeSnapshot(item: any): WorkflowVersionSnapshot {
+function normalizeWorkflowActivityConfig(item: any): WorkflowActivityConfig {
+  const normalizedConfig = normalizeActivityConfigValue(item)
+
   return {
     id: String(item?.id ?? crypto.randomUUID()),
     workflowId: String(item?.workflowId ?? ''),
+    elementId: String(item?.elementId ?? ''),
+    elementType: String(item?.elementType ?? ''),
+    elementName:
+      typeof item?.elementName === 'string' ? item.elementName : undefined,
+    ...normalizedConfig,
+    createdAt:
+      typeof item?.createdAt === 'string'
+        ? item.createdAt
+        : new Date().toISOString(),
+    updatedAt:
+      typeof item?.updatedAt === 'string'
+        ? item.updatedAt
+        : new Date().toISOString(),
+  }
+}
+
+function elementConfigToActivityConfig(
+  item: WorkflowElementConfig,
+): WorkflowActivityConfig | null {
+  if (item.kind !== 'activity') return null
+
+  const config = normalizeActivityConfigValue(item.config)
+
+  return {
+    id: item.id,
+    workflowId: item.workflowId,
+    elementId: item.elementId,
+    elementType: item.elementType,
+    elementName: item.elementName,
+    ...config,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  }
+}
+
+function activityConfigToElementConfig(
+  item: WorkflowActivityConfig,
+): WorkflowElementConfig {
+  const normalizedActivity = normalizeWorkflowActivityConfig(item)
+
+  return {
+    id: normalizedActivity.id,
+    workflowId: normalizedActivity.workflowId,
+    elementId: normalizedActivity.elementId,
+    elementType: normalizedActivity.elementType,
+    elementName: normalizedActivity.elementName,
+    kind: 'activity',
+    config: buildActivityElementConfigPayload(normalizedActivity),
+    createdAt: normalizedActivity.createdAt,
+    updatedAt: normalizedActivity.updatedAt,
+  }
+}
+
+function dedupeElementConfigs(
+  items: WorkflowElementConfig[],
+): WorkflowElementConfig[] {
+  const map = new Map<string, WorkflowElementConfig>()
+
+  items.forEach((item) => {
+    const normalized = normalizeWorkflowElementConfig(item)
+    const key = `${normalized.workflowId}::${normalized.elementId}`
+    map.set(key, normalized)
+  })
+
+  return Array.from(map.values()).sort(
+    (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
+  )
+}
+
+function normalizeSnapshot(item: any): WorkflowVersionSnapshot {
+  const workflow = normalizeWorkflow(item?.workflow ?? {})
+  const elementConfigs = Array.isArray(item?.elementConfigs)
+    ? item.elementConfigs.map(normalizeWorkflowElementConfig)
+    : Array.isArray(item?.activityConfigs)
+      ? item.activityConfigs
+          .map(normalizeWorkflowActivityConfig)
+          .map(activityConfigToElementConfig)
+      : []
+
+  return {
+    id: String(item?.id ?? crypto.randomUUID()),
+    workflowId: String(item?.workflowId ?? workflow.id ?? ''),
     versionLabel:
       typeof item?.versionLabel === 'string' && item.versionLabel.trim()
         ? item.versionLabel
         : 'Snapshot',
     note: typeof item?.note === 'string' ? item.note : undefined,
-    workflow: normalizeWorkflow(item?.workflow ?? {}),
-    activityConfigs: Array.isArray(item?.activityConfigs)
-      ? item.activityConfigs.map(normalizeActivityConfig)
-      : [],
+    workflow,
+    elementConfigs: dedupeElementConfigs(elementConfigs),
     createdAt:
       typeof item?.createdAt === 'string'
         ? item.createdAt
@@ -346,13 +861,17 @@ function normalizeSnapshot(item: any): WorkflowVersionSnapshot {
   }
 }
 
+function readArrayFromStorage(key: string): any[] {
+  return safeParseJson<any[]>(readStorage(key), [])
+}
+
 export function loadWorkflows(): WorkflowDefinition[] {
-  const raw = safeParseJson<any[]>(localStorage.getItem(WORKFLOWS_KEY), [])
+  const raw = readArrayFromStorage(WORKFLOWS_KEY)
   return Array.isArray(raw) ? raw.map(normalizeWorkflow) : []
 }
 
 export function saveWorkflows(items: WorkflowDefinition[]) {
-  localStorage.setItem(WORKFLOWS_KEY, JSON.stringify(items))
+  writeStorage(WORKFLOWS_KEY, JSON.stringify(items.map(normalizeWorkflow)))
 }
 
 export function getWorkflowById(id: string) {
@@ -401,13 +920,119 @@ export function createWorkflowDraft(input: {
   })
 }
 
+export function loadWorkflowElementConfigs(): WorkflowElementConfig[] {
+  const primary = readArrayFromStorage(ELEMENT_CONFIGS_KEY)
+    .map(normalizeWorkflowElementConfig)
+
+  const legacyElementConfigs = readArrayFromStorage(LEGACY_ELEMENT_CONFIGS_KEY)
+    .map(normalizeWorkflowElementConfig)
+
+  const legacyActivityConfigs = readArrayFromStorage(LEGACY_ACTIVITY_CONFIGS_KEY)
+    .map(normalizeWorkflowActivityConfig)
+    .map(activityConfigToElementConfig)
+
+  const merged = dedupeElementConfigs([
+    ...legacyActivityConfigs,
+    ...legacyElementConfigs,
+    ...primary,
+  ])
+
+  if (JSON.stringify(primary) !== JSON.stringify(merged)) {
+    saveWorkflowElementConfigs(merged)
+  }
+
+  return merged
+}
+
+export function saveWorkflowElementConfigs(items: WorkflowElementConfig[]) {
+  const normalized = dedupeElementConfigs(items)
+  writeStorage(ELEMENT_CONFIGS_KEY, JSON.stringify(normalized))
+}
+
+export function getElementConfigsByWorkflow(workflowId: string) {
+  return loadWorkflowElementConfigs().filter((item) => item.workflowId === workflowId)
+}
+
+export function getWorkflowElementConfig(workflowId: string, elementId: string) {
+  return (
+    loadWorkflowElementConfigs().find(
+      (item) => item.workflowId === workflowId && item.elementId === elementId,
+    ) ?? null
+  )
+}
+
+export function getElementConfig(workflowId: string, elementId: string) {
+  return getWorkflowElementConfig(workflowId, elementId)
+}
+
+export function upsertElementConfig(
+  values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>,
+) {
+  const current = loadWorkflowElementConfigs()
+  const index = current.findIndex(
+    (item) =>
+      item.workflowId === values.workflowId &&
+      item.elementId === values.elementId,
+  )
+
+  const now = new Date().toISOString()
+
+  const nextItem: WorkflowElementConfig = normalizeWorkflowElementConfig(
+    index >= 0
+      ? {
+          ...current[index],
+          ...values,
+          updatedAt: now,
+        }
+      : {
+          ...values,
+          id: crypto.randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+        },
+  )
+
+  const nextConfigs = [...current]
+
+  if (index >= 0) {
+    nextConfigs[index] = nextItem
+  } else {
+    nextConfigs.unshift(nextItem)
+  }
+
+  saveWorkflowElementConfigs(nextConfigs)
+  return nextItem
+}
+
+export function removeMissingElementConfigs(
+  workflowId: string,
+  validElementIds: string[],
+) {
+  const validIdsSet = new Set(validElementIds)
+  const nextConfigs = loadWorkflowElementConfigs().filter((item) => {
+    if (item.workflowId !== workflowId) return true
+    return validIdsSet.has(item.elementId)
+  })
+
+  saveWorkflowElementConfigs(nextConfigs)
+}
+
 export function loadWorkflowActivityConfigs(): WorkflowActivityConfig[] {
-  const raw = safeParseJson<any[]>(localStorage.getItem(ACTIVITY_CONFIGS_KEY), [])
-  return Array.isArray(raw) ? raw.map(normalizeActivityConfig) : []
+  return loadWorkflowElementConfigs()
+    .map(elementConfigToActivityConfig)
+    .filter((item): item is WorkflowActivityConfig => item !== null)
 }
 
 export function saveWorkflowActivityConfigs(items: WorkflowActivityConfig[]) {
-  localStorage.setItem(ACTIVITY_CONFIGS_KEY, JSON.stringify(items))
+  const currentNonActivities = loadWorkflowElementConfigs().filter(
+    (item) => item.kind !== 'activity',
+  )
+
+  const nextActivities = items
+    .map(normalizeWorkflowActivityConfig)
+    .map(activityConfigToElementConfig)
+
+  saveWorkflowElementConfigs([...currentNonActivities, ...nextActivities])
 }
 
 export function getActivityConfigsByWorkflow(workflowId: string) {
@@ -425,49 +1050,48 @@ export function getActivityConfig(workflowId: string, elementId: string) {
 export function upsertActivityConfig(
   input: Omit<WorkflowActivityConfig, 'id' | 'createdAt' | 'updatedAt'>,
 ) {
-  const items = loadWorkflowActivityConfigs()
-  const index = items.findIndex(
-    (item) => item.workflowId === input.workflowId && item.elementId === input.elementId,
-  )
-  const now = new Date().toISOString()
-
-  if (index >= 0) {
-    items[index] = normalizeActivityConfig({
-      ...items[index],
-      ...input,
-      updatedAt: now,
-    })
-  } else {
-    items.unshift(
-      normalizeActivityConfig({
-        id: crypto.randomUUID(),
-        ...input,
-        createdAt: now,
-        updatedAt: now,
-      }),
-    )
-  }
-
-  saveWorkflowActivityConfigs(items)
-}
-
-export function removeMissingActivityConfigs(workflowId: string, validElementIds: string[]) {
-  const items = loadWorkflowActivityConfigs()
-  const nextItems = items.filter((item) => {
-    if (item.workflowId !== workflowId) return true
-    return validElementIds.includes(item.elementId)
+  const normalized = normalizeWorkflowActivityConfig({
+    ...input,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   })
 
-  saveWorkflowActivityConfigs(nextItems)
+  return upsertElementConfig({
+    workflowId: normalized.workflowId,
+    elementId: normalized.elementId,
+    elementType: normalized.elementType,
+    elementName: normalized.elementName,
+    kind: 'activity',
+    config: buildActivityElementConfigPayload(normalized),
+  })
+}
+
+export function removeMissingActivityConfigs(
+  workflowId: string,
+  validElementIds: string[],
+) {
+  const validIdsSet = new Set(validElementIds)
+
+  const nextConfigs = loadWorkflowElementConfigs().filter((item) => {
+    if (item.workflowId !== workflowId) return true
+    if (item.kind !== 'activity') return true
+    return validIdsSet.has(item.elementId)
+  })
+
+  saveWorkflowElementConfigs(nextConfigs)
 }
 
 export function loadWorkflowSnapshots(): WorkflowVersionSnapshot[] {
-  const raw = safeParseJson<any[]>(localStorage.getItem(SNAPSHOTS_KEY), [])
+  const raw = readArrayFromStorage(SNAPSHOTS_KEY)
   return Array.isArray(raw) ? raw.map(normalizeSnapshot) : []
 }
 
 export function saveWorkflowSnapshots(items: WorkflowVersionSnapshot[]) {
-  localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(items))
+  writeStorage(
+    SNAPSHOTS_KEY,
+    JSON.stringify(items.map(normalizeSnapshot)),
+  )
 }
 
 export function listWorkflowSnapshots(workflowId: string) {
@@ -478,11 +1102,18 @@ export function listWorkflowSnapshots(workflowId: string) {
 
 export function createWorkflowSnapshot(input: {
   workflow: WorkflowDefinition
-  activityConfigs: WorkflowActivityConfig[]
   versionLabel: string
   note?: string
+  elementConfigs?: WorkflowElementConfig[]
+  activityConfigs?: WorkflowActivityConfig[]
 }) {
   const items = loadWorkflowSnapshots()
+
+  const normalizedElementConfigs = input.elementConfigs
+    ? input.elementConfigs.map(normalizeWorkflowElementConfig)
+    : (input.activityConfigs ?? [])
+        .map(normalizeWorkflowActivityConfig)
+        .map(activityConfigToElementConfig)
 
   const snapshot = normalizeSnapshot({
     id: crypto.randomUUID(),
@@ -490,7 +1121,7 @@ export function createWorkflowSnapshot(input: {
     versionLabel: input.versionLabel,
     note: input.note,
     workflow: input.workflow,
-    activityConfigs: input.activityConfigs,
+    elementConfigs: normalizedElementConfigs,
     createdAt: new Date().toISOString(),
   })
 
@@ -499,7 +1130,6 @@ export function createWorkflowSnapshot(input: {
 
   return snapshot
 }
-
 
 export function restoreWorkflowSnapshot(snapshotId: string) {
   const snapshot = loadWorkflowSnapshots().find((item) => item.id === snapshotId)
@@ -510,154 +1140,18 @@ export function restoreWorkflowSnapshot(snapshotId: string) {
     updatedAt: new Date().toISOString(),
   })
 
-  const allConfigs = loadWorkflowActivityConfigs().filter(
+  const allConfigs = loadWorkflowElementConfigs().filter(
     (item) => item.workflowId !== snapshot.workflowId,
   )
 
-  const restoredConfigs = snapshot.activityConfigs.map((item) =>
-    normalizeActivityConfig({
+  const restoredConfigs = snapshot.elementConfigs.map((item) =>
+    normalizeWorkflowElementConfig({
       ...item,
       updatedAt: new Date().toISOString(),
     }),
   )
 
-  saveWorkflowActivityConfigs([...allConfigs, ...restoredConfigs])
+  saveWorkflowElementConfigs([...allConfigs, ...restoredConfigs])
 
   return snapshot
-}
-
-/**
- * storage.patch.ts
- *
- * INSTRUÇÕES: aplique APENAS estas adições no seu storage.ts existente.
- * Não remova nenhum campo — os booleans allowApprove etc. são mantidos
- * para compatibilidade com snapshots e configs já salvas.
- *
- * ─────────────────────────────────────────────────────────────────────
- * PASSO 1 — Adicione estes dois tipos ANTES de ActivityConfig:
- * ─────────────────────────────────────────────────────────────────────
- */
-
-export type ActivityActionOutcome =
-  | 'approve'
-  | 'reject'
-  | 'request-changes'
-  | 'forward'
-  | 'custom'
-
-export type ActivityAction = {
-  id: string
-  label: string
-  color: 'green' | 'red' | 'orange' | 'blue' | 'purple' | 'gold' | 'default'
-  outcome: ActivityActionOutcome
-  confirmText?: string
-  requiresComment: boolean
-}
-
-/**
- * ─────────────────────────────────────────────────────────────────────
- * PASSO 2 — Em ActivityConfig, acrescente o campo opcional `actions?`
- *           ao final (antes do fechamento da chave).
- *           Todos os campos existentes ficam intactos.
- * ─────────────────────────────────────────────────────────────────────
- *
- * export type ActivityConfig = {
- *   assignmentMode: ...
- *   ...
- *   allowApprove: boolean        ← mantido
- *   allowReject: boolean         ← mantido
- *   allowRequestChanges: boolean ← mantido
- *   allowForward: boolean        ← mantido
- *   instructions?: string
- *   helpText?: string
- *   actions?: ActivityAction[]   ← ADICIONAR esta linha
- * }
- */
-
-/**
- * ─────────────────────────────────────────────────────────────────────
- * PASSO 3 — Em WorkflowActivityConfig, acrescente o campo opcional
- *           `actions?` e `linkedWorkflowId?` ao final.
- * ─────────────────────────────────────────────────────────────────────
- *
- * export type WorkflowActivityConfig = {
- *   ...
- *   allowApprove: boolean        ← mantido
- *   allowReject: boolean         ← mantido
- *   allowRequestChanges: boolean ← mantido
- *   allowForward: boolean        ← mantido
- *   instructions?: string
- *   helpText?: string
- *   actions?: ActivityAction[]         ← ADICIONAR
- *   linkedWorkflowId?: string          ← ADICIONAR (para SubProcess)
- *   sendTask?: SendTaskConfig          ← ADICIONAR (para SendTask)
- *   createdAt: string
- *   updatedAt: string
- * }
- */
-
-/**
- * ─────────────────────────────────────────────────────────────────────
- * PASSO 4 — Adicione o tipo SendTaskConfig (novo, para SendTaskConfigPanel):
- * ─────────────────────────────────────────────────────────────────────
- */
-
-export type SendTaskConfig = {
-  notificationTemplateId?: string
-  channel: 'email' | 'in-app' | 'whatsapp' | 'sms' | 'all'
-  recipientRoleIds: string[]
-  recipientUserIds: string[]
-  recipientAreaIds: string[]
-  notifyInitiator: boolean
-  notifyPreviousAssignees: boolean
-  customSubject?: string
-  customBody?: string
-  contextVariables: string[]
-}
-
-export type ActivityConfig = {
-  assignmentMode: 'user' | 'role' | 'area' | 'function'
-  responsibleUserIds: string[]
-  responsibleRoleIds: string[]
-  responsibleAreaIds: string[]
-  responsibleFunctionIds: string[]
-  deadlineMode: 'hours' | 'days' | 'fixed-date'
-  deadlineValue?: number | string
-  metadataDefinitionIds: string[]
-  notificationTemplateIds: string[]
-  allowApprove: boolean
-  allowReject: boolean
-  allowRequestChanges: boolean
-  allowForward: boolean
-  instructions?: string
-  helpText?: string
-  actions?: ActivityAction[]        
-}
-
-export type WorkflowActivityConfig = {
-  id: string
-  workflowId: string
-  elementId: string
-  elementType: string
-  elementName?: string
-  assignmentMode: 'user' | 'role' | 'area' | 'function'
-  responsibleUserIds: string[]
-  responsibleRoleIds: string[]
-  responsibleAreaIds: string[]
-  responsibleFunctionIds: string[]
-  deadlineMode: 'hours' | 'days' | 'fixed-date'
-  deadlineValue?: number | string
-  metadataDefinitionIds: string[]
-  notificationTemplateIds: string[]
-  allowApprove: boolean
-  allowReject: boolean
-  allowRequestChanges: boolean
-  allowForward: boolean
-  instructions?: string
-  helpText?: string
-  actions?: ActivityAction[]       
-  linkedWorkflowId?: string         
-  sendTask?: SendTaskConfig         
-  createdAt: string
-  updatedAt: string
 }
