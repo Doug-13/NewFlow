@@ -55,7 +55,6 @@ import {
   upsertElementConfig,
   upsertWorkflow,
   type WorkflowDefinition,
-  type WorkflowElementConfig,
   type WorkflowStatus,
 } from '../../features/workflows/storage'
 import {
@@ -530,14 +529,14 @@ export function WorkflowStudioPage() {
                 setWorkflow((prev) =>
                   prev
                     ? {
-                      ...prev,
-                      name: values.name ?? prev.name,
-                      description: values.description,
-                      version: values.version ?? prev.version,
-                      status: values.status ?? prev.status,
-                      documentTypeName: values.documentTypeName,
-                      updatedAt: new Date().toISOString(),
-                    }
+                        ...prev,
+                        name: values.name ?? prev.name,
+                        description: values.description,
+                        version: values.version ?? prev.version,
+                        status: values.status ?? prev.status,
+                        documentTypeName: values.documentTypeName,
+                        updatedAt: new Date().toISOString(),
+                      }
                     : prev,
                 )
               }}
@@ -784,7 +783,7 @@ export function WorkflowStudioPage() {
                           )
                         }
 
-                        ; (e.target as HTMLInputElement).blur()
+                        ;(e.target as HTMLInputElement).blur()
                       }}
                       placeholder="Nome do elemento..."
                       variant="borderless"

@@ -312,37 +312,39 @@ export function WorkflowsPage({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card bordered={false}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 16,
-            flexWrap: 'wrap',
-            alignItems: 'flex-start',
-          }}
-        >
-          <div>
-            <Title level={3} style={{ margin: 0 }}>
-              Workflows
-            </Title>
+      {!embedded && (
+        <Card bordered={false}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+              alignItems: 'flex-start',
+            }}
+          >
+            <div>
+              <Title level={3} style={{ margin: 0 }}>
+                Workflows
+              </Title>
 
-            <Text type="secondary">
-              Gerencie os fluxos e edite tudo em um único Workflow Studio.
-            </Text>
+              <Text type="secondary">
+                Gerencie os fluxos e edite tudo em um único Workflow Studio.
+              </Text>
+            </div>
+
+            <Space wrap>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => navigate('/workflows/new')}
+              >
+                Novo workflow
+              </Button>
+            </Space>
           </div>
-
-          <Space wrap>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => navigate('/workflows/new')}
-            >
-              Novo workflow
-            </Button>
-          </Space>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       <Card bordered={false}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
