@@ -142,3 +142,26 @@ export const updateOrgRole = async (id: string, data: {
 
 export const deleteOrgRole = async (id: string) =>
   api.delete(`/organization/roles/${id}`)
+
+// ─── GROUPS ──────────────────────────────────────────────────────────────────
+
+export interface OrgGroupDto {
+  id: string
+  name: string
+  code?: string
+  description?: string
+  isActive: boolean
+  createdAt: string
+}
+
+export const getOrgGroups = async () =>
+  (await api.get('/organization/groups')).data as OrgGroupDto[]
+
+export const createOrgGroup = async (data: { name: string; code?: string; description?: string }) =>
+  (await api.post('/organization/groups', data)).data as OrgGroupDto
+
+export const updateOrgGroup = async (id: string, data: { name: string; code?: string; description?: string }) =>
+  (await api.put(`/organization/groups/${id}`, data)).data as OrgGroupDto
+
+export const deleteOrgGroup = async (id: string) =>
+  api.delete(`/organization/groups/${id}`)

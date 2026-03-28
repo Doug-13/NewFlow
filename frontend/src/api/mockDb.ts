@@ -41,6 +41,7 @@ function ensureAllCollections(db: Partial<MockDatabase> | null | undefined): Moc
     organizationAreas: clone(db?.organizationAreas ?? INITIAL_MOCK_DB.organizationAreas),
     organizationDisciplines: clone(db?.organizationDisciplines ?? INITIAL_MOCK_DB.organizationDisciplines),
     organizationRoles: clone(db?.organizationRoles ?? INITIAL_MOCK_DB.organizationRoles),
+    organizationGroups: clone(db?.organizationGroups ?? INITIAL_MOCK_DB.organizationGroups),
     documentInstances: clone(db?.documentInstances ?? INITIAL_MOCK_DB.documentInstances),
     tasks: clone(db?.tasks ?? INITIAL_MOCK_DB.tasks),
     workflows: clone(db?.workflows ?? INITIAL_MOCK_DB.workflows),

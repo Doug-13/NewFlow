@@ -1,82 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Card,
-  Tag,
+  Alert,
   Button,
-  Typography,
-  Descriptions,
-  Space,
-  Tabs,
-  Row,
+  Card,
   Col,
-  Divider,
+  Descriptions,
   Empty,
   List,
-  Badge,
-  Skeleton,
-  Drawer,
-  Form,
-  Input,
-  InputNumber,
-  Switch,
-  Select,
-  Collapse,
-  Alert,
+  Row,
+  Space,
+  Tag,
+  Tabs,
+  Typography,
 } from 'antd'
 import {
   ArrowLeftOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
+  BranchesOutlined,
   ClockCircleOutlined,
-  NotificationOutlined,
-  UserOutlined,
-  FileTextOutlined,
-  SwapOutlined,
-  PlayCircleOutlined,
-  StopOutlined,
   EditOutlined,
-  SaveOutlined,
-  InfoCircleOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
-import { getWorkflow } from '../../api/workflows'
-import { WorkflowDiagram } from '../../components/WorkflowDiagram'
-import type { Workflow, WorkflowStep, WorkflowNodePosition } from '../../types'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import {
+  getWorkflowById,
+  type WorkflowDefinition,
+  type WorkflowStatus,
+} from '../../features/workflows/storage'
 
 const { Title, Text } = Typography
-const { Panel } = Collapse
-
-const actionColors: Record<string, string> = {
-  aprovar: 'green',
-  reprovar: 'red',
-  devolver: 'orange',
-  enviar: 'blue',
-}
-
-type WorkflowMetadata =
-  | string
-  | {
-      id?: string
-      name?: string
-      label?: string
-      type?: string
-      required?: boolean
-      isRequired?: boolean
-      multiple?: boolean
-      options?: string[]
-    }
-
-type WorkflowResponsible =
-  | string
-  | {
-      id?: string
-      name?: string
-      fullName?: string
-      roleName?: string
-      positionName?: string
-      type?: string
-    }
 
 type WorkflowDetailPageProps = {
   workflowId?: string
@@ -84,350 +37,93 @@ type WorkflowDetailPageProps = {
   onBack?: () => void
 }
 
-function getActionColor(action: string) {
-  return actionColors[action?.toLowerCase?.()] ?? 'default'
+type LegacyStepViewModel = {
+  id?: string
+  name?: string
+  orderIndex?: number
+  description?: string
+  isInitial?: boolean
+  isFinal?: boolean
+  slaHours?: number
+  allowedActions?: string[]
 }
 
-function getResponsibles(step: WorkflowStep): WorkflowResponsible[] {
-  const s = step as WorkflowStep & {
-    responsibles?: WorkflowResponsible[]
-    assignees?: WorkflowResponsible[]
-    users?: WorkflowResponsible[]
-  }
-  return s.responsibles ?? s.assignees ?? s.users ?? []
+type WorkflowWithLegacySteps = WorkflowDefinition & {
+  steps?: unknown[]
 }
 
-function getMetadata(step: WorkflowStep): WorkflowMetadata[] {
-  const s = step as WorkflowStep & {
-    metadata?: WorkflowMetadata[]
-    activityMetadata?: WorkflowMetadata[]
-    fields?: WorkflowMetadata[]
-  }
-  return s.metadata ?? s.activityMetadata ?? s.fields ?? []
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
-function getReceivesNotification(step: WorkflowStep): boolean {
-  const s = step as WorkflowStep & {
-    receivesNotification?: boolean
-    notifyResponsible?: boolean
-    notificationEnabled?: boolean
-  }
-  return Boolean(
-    s.receivesNotification ?? s.notifyResponsible ?? s.notificationEnabled ?? false,
-  )
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string')
 }
 
-function getRequiredNotification(step: WorkflowStep): boolean {
-  const s = step as WorkflowStep & {
-    requiredNotification?: boolean
-    notificationRequired?: boolean
-  }
-  return Boolean(s.requiredNotification ?? s.notificationRequired ?? false)
-}
-
-function renderResponsibleName(responsible: WorkflowResponsible) {
-  if (typeof responsible === 'string') return responsible
-  return (
-    responsible.name ||
-    responsible.fullName ||
-    responsible.roleName ||
-    responsible.positionName ||
-    responsible.type ||
-    'Responsável não identificado'
-  )
-}
-
-function renderMetadataTag(metadata: WorkflowMetadata) {
-  if (typeof metadata === 'string') {
-    return { title: metadata, subtitle: '', required: false, multiple: false }
-  }
+function normalizeLegacyStep(step: unknown): LegacyStepViewModel | null {
+  if (!isRecord(step)) return null
 
   return {
-    title: metadata.label || metadata.name || 'Metadado sem nome',
-    subtitle: metadata.type ? `Tipo: ${metadata.type}` : '',
-    required: Boolean(metadata.required ?? metadata.isRequired ?? false),
-    multiple: Boolean(metadata.multiple ?? false),
+    id: typeof step.id === 'string' ? step.id : undefined,
+    name: typeof step.name === 'string' ? step.name : undefined,
+    orderIndex:
+      typeof step.orderIndex === 'number' ? step.orderIndex : undefined,
+    description:
+      typeof step.description === 'string' ? step.description : undefined,
+    isInitial: typeof step.isInitial === 'boolean' ? step.isInitial : undefined,
+    isFinal: typeof step.isFinal === 'boolean' ? step.isFinal : undefined,
+    slaHours: typeof step.slaHours === 'number' ? step.slaHours : undefined,
+    allowedActions: toStringArray(step.allowedActions),
   }
 }
 
-type StepDrawerProps = {
-  step: WorkflowStep | null
-  open: boolean
-  onClose: () => void
-  onSave: (updated: WorkflowStep) => void
+function getStatusColor(status: WorkflowStatus) {
+  switch (status) {
+    case 'active':
+      return 'green'
+    case 'draft':
+      return 'gold'
+    case 'inactive':
+      return 'default'
+    case 'archived':
+      return 'red'
+    default:
+      return 'default'
+  }
 }
 
-function StepEditDrawer({ step, open, onClose, onSave }: StepDrawerProps) {
-  const [form] = Form.useForm()
-
-  useEffect(() => {
-    if (!step || !open) return
-
-    form.setFieldsValue({
-      name: step.name,
-      description: step.description ?? '',
-      slaHours: step.slaHours ?? null,
-      isInitial: step.isInitial ?? false,
-      isFinal: step.isFinal ?? false,
-      allowedActions: step.allowedActions ?? [],
-    })
-  }, [form, open, step])
-
-  if (!step) return null
-
-  const responsibles = getResponsibles(step)
-  const metadata = getMetadata(step)
-  const receivesNotification = getReceivesNotification(step)
-  const requiredNotification = getRequiredNotification(step)
-
-  const handleSave = () => {
-    form.validateFields().then((values) => {
-      onSave({ ...step, ...values })
-      onClose()
-    })
+function getStatusLabel(status: WorkflowStatus) {
+  switch (status) {
+    case 'active':
+      return 'Ativo'
+    case 'draft':
+      return 'Rascunho'
+    case 'inactive':
+      return 'Inativo'
+    case 'archived':
+      return 'Arquivado'
+    default:
+      return status
   }
+}
 
-  return (
-    <Drawer
-      title={
-        <Space>
-          <EditOutlined style={{ color: '#1677ff' }} />
-          <span>Editar etapa</span>
-          {step.isInitial && (
-            <Tag color="blue" icon={<PlayCircleOutlined />}>
-              Inicial
-            </Tag>
-          )}
-          {step.isFinal && (
-            <Tag color="purple" icon={<StopOutlined />}>
-              Final
-            </Tag>
-          )}
-        </Space>
-      }
-      open={open}
-      onClose={onClose}
-      width={560}
-      extra={
-        <Space>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
-            Salvar alterações
-          </Button>
-        </Space>
-      }
-      destroyOnClose
-    >
-      <Alert
-        message="Editando localmente"
-        description="As alterações feitas aqui serão aplicadas na visualização atual. Para persistir, depois você pode ligar isso ao endpoint de atualização."
-        type="info"
-        showIcon
-        icon={<InfoCircleOutlined />}
-        style={{ marginBottom: 20, borderRadius: 10 }}
-      />
+function formatDateTime(value?: string) {
+  if (!value) return '-'
 
-      <Form form={form} layout="vertical">
-        <Collapse
-          defaultActiveKey={[
-            'basic',
-            'transitions',
-            'responsibles',
-            'notifications',
-            'metadata',
-          ]}
-          ghost
-          style={{ marginBottom: 8 }}
-        >
-          <Panel
-            key="basic"
-            header={
-              <Space>
-                <FileTextOutlined style={{ color: '#1677ff' }} />
-                <Text strong>Identificação</Text>
-              </Space>
-            }
-          >
-            <Form.Item
-              label="Nome da etapa"
-              name="name"
-              rules={[{ required: true, message: 'Informe o nome da etapa' }]}
-            >
-              <Input placeholder="Ex.: Aprovação gerencial" />
-            </Form.Item>
+  try {
+    return format(new Date(value), "dd/MM/yyyy 'às' HH:mm", {
+      locale: ptBR,
+    })
+  } catch {
+    return value
+  }
+}
 
-            <Form.Item label="Descrição" name="description">
-              <Input.TextArea rows={2} placeholder="Descreva o objetivo desta etapa" />
-            </Form.Item>
-
-            <Row gutter={12}>
-              <Col span={12}>
-                <Form.Item label="SLA (horas)" name="slaHours">
-                  <InputNumber min={0} style={{ width: '100%' }} placeholder="Ex.: 24" />
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item label="Inicial" name="isInitial" valuePropName="checked">
-                  <Switch />
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item label="Final" name="isFinal" valuePropName="checked">
-                  <Switch />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Form.Item label="Ações permitidas" name="allowedActions">
-              <Select
-                mode="tags"
-                placeholder="Ex.: aprovar, reprovar, devolver"
-                options={[
-                  'aprovar',
-                  'reprovar',
-                  'devolver',
-                  'enviar',
-                  'concluir',
-                  'publicar',
-                  'arquivar',
-                  'cancelar',
-                ].map((a) => ({ label: a, value: a }))}
-              />
-            </Form.Item>
-          </Panel>
-
-          <Panel
-            key="responsibles"
-            header={
-              <Space>
-                <UserOutlined style={{ color: '#722ed1' }} />
-                <Text strong>Responsáveis</Text>
-                <Badge count={responsibles.length} style={{ backgroundColor: '#722ed1' }} />
-              </Space>
-            }
-          >
-            {responsibles.length > 0 ? (
-              <Space wrap>
-                {responsibles.map((r, i) => (
-                  <Tag key={i} color="geekblue" style={{ borderRadius: 20 }}>
-                    {renderResponsibleName(r)}
-                  </Tag>
-                ))}
-              </Space>
-            ) : (
-              <Text type="secondary">Nenhum responsável definido para esta etapa.</Text>
-            )}
-            <div style={{ marginTop: 12 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                A edição de responsáveis é feita através da API de papéis e permissões.
-              </Text>
-            </div>
-          </Panel>
-
-          <Panel
-            key="notifications"
-            header={
-              <Space>
-                <NotificationOutlined style={{ color: '#fa8c16' }} />
-                <Text strong>Notificações</Text>
-              </Space>
-            }
-          >
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Space>
-                {receivesNotification ? (
-                  <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                ) : (
-                  <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                )}
-                <Text>
-                  Recebe notificação: <Text strong>{receivesNotification ? 'Sim' : 'Não'}</Text>
-                </Text>
-              </Space>
-              <Space>
-                {requiredNotification ? (
-                  <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                ) : (
-                  <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                )}
-                <Text>
-                  Notificação obrigatória:{' '}
-                  <Text strong>{requiredNotification ? 'Sim' : 'Não'}</Text>
-                </Text>
-              </Space>
-            </Space>
-          </Panel>
-
-          <Panel
-            key="transitions"
-            header={
-              <Space>
-                <SwapOutlined style={{ color: '#13c2c2' }} />
-                <Text strong>Transições</Text>
-                <Badge
-                  count={step.transitions?.length ?? 0}
-                  style={{ backgroundColor: '#13c2c2' }}
-                />
-              </Space>
-            }
-          >
-            {(step.transitions ?? []).length > 0 ? (
-              <List
-                size="small"
-                dataSource={step.transitions}
-                renderItem={(transition, index) => (
-                  <List.Item key={transition.id ?? index}>
-                    <Space>
-                      <Tag color={getActionColor(transition.triggerAction)}>
-                        {transition.triggerAction}
-                      </Tag>
-                      <Text type="secondary">→</Text>
-                      <Text>{transition.toStepName || 'Destino não informado'}</Text>
-                    </Space>
-                  </List.Item>
-                )}
-              />
-            ) : (
-              <Text type="secondary">Nenhuma transição configurada.</Text>
-            )}
-          </Panel>
-
-          <Panel
-            key="metadata"
-            header={
-              <Space>
-                <FileTextOutlined style={{ color: '#52c41a' }} />
-                <Text strong>Metadados da atividade</Text>
-                <Badge count={metadata.length} style={{ backgroundColor: '#52c41a' }} />
-              </Space>
-            }
-          >
-            {metadata.length > 0 ? (
-              <List
-                size="small"
-                dataSource={metadata}
-                renderItem={(item, index) => {
-                  const parsed = renderMetadataTag(item)
-                  return (
-                    <List.Item key={index}>
-                      <Space wrap>
-                        <Text strong>{parsed.title}</Text>
-                        {parsed.subtitle && <Tag color="default">{parsed.subtitle}</Tag>}
-                        {parsed.required && <Tag color="red">Obrigatório</Tag>}
-                        {parsed.multiple && <Tag color="cyan">Multivalorado</Tag>}
-                      </Space>
-                    </List.Item>
-                  )
-                }}
-              />
-            ) : (
-              <Text type="secondary">Nenhum metadado configurado.</Text>
-            )}
-          </Panel>
-        </Collapse>
-      </Form>
-    </Drawer>
-  )
+function renderStepTitle(step: LegacyStepViewModel) {
+  const orderIndex = step.orderIndex ?? 0
+  const name = step.name ?? 'Etapa sem nome'
+  return `${orderIndex}. ${name}`
 }
 
 export function WorkflowDetailPage({
@@ -439,80 +135,27 @@ export function WorkflowDetailPage({
   const navigate = useNavigate()
   const resolvedWorkflowId = workflowId ?? params.id
 
-  const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [workflowState, setWorkflowState] = useState<Workflow | null>(null)
-
-  const { data: workflow, isLoading } = useQuery<Workflow>({
-    queryKey: ['workflow', resolvedWorkflowId],
-    queryFn: () => getWorkflow(resolvedWorkflowId!),
-    enabled: !!resolvedWorkflowId,
-  })
+  const [workflow, setWorkflow] = useState<WorkflowDefinition | null>(null)
 
   useEffect(() => {
-    if (workflow) {
-      setWorkflowState(workflow)
-    }
-  }, [workflow])
+    if (!resolvedWorkflowId) return
+    setWorkflow(getWorkflowById(resolvedWorkflowId))
+  }, [resolvedWorkflowId])
 
-  const currentWorkflow = workflowState ?? workflow ?? null
+  const legacySteps = useMemo<LegacyStepViewModel[]>(() => {
+    const rawSteps = ((workflow as WorkflowWithLegacySteps | null)?.steps ?? []) as unknown[]
 
-  const orderedSteps = useMemo(() => {
-    return (currentWorkflow?.steps ?? [])
+    return rawSteps
+      .map(normalizeLegacyStep)
+      .filter((step): step is LegacyStepViewModel => step !== null)
       .slice()
       .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
-  }, [currentWorkflow])
+  }, [workflow])
 
-  const handleStepClick = (step: WorkflowStep) => {
-    setSelectedStep(step)
-    setDrawerOpen(true)
-  }
-
-  const handleStepSave = (updated: WorkflowStep) => {
-    setWorkflowState((prev) => {
-      if (!prev) return prev
-
-      return {
-        ...prev,
-        steps: prev.steps.map((step) => (step.id === updated.id ? updated : step)),
-      }
-    })
-
-    setSelectedStep(updated)
-    setDrawerOpen(false)
-  }
-
-  const handleLayoutChange = (
-    nodePositions: Record<string, WorkflowNodePosition>,
-  ) => {
-    setWorkflowState((prev) => {
-      if (!prev) return prev
-
-      return {
-        ...prev,
-        layout: {
-          ...(prev.layout ?? {}),
-          nodePositions,
-        },
-      }
-    })
-  }
-
-  if (isLoading) {
+  if (!workflow) {
     return (
       <div style={{ padding: 24 }}>
-        <Skeleton active paragraph={{ rows: 3 }} />
-        <Card style={{ marginTop: 16 }}>
-          <Skeleton active paragraph={{ rows: 8 }} />
-        </Card>
-      </div>
-    )
-  }
-
-  if (!currentWorkflow) {
-    return (
-      <div style={{ padding: 24 }}>
-        <Empty description="Fluxo não encontrado" />
+        <Empty description="Workflow não encontrado" />
       </div>
     )
   }
@@ -541,339 +184,259 @@ export function WorkflowDetailPage({
                 onBack?.()
                 return
               }
+
               navigate('/workflows')
             }}
           >
             Voltar
           </Button>
+
           <div>
             <Title level={3} style={{ margin: 0 }}>
-              {currentWorkflow.name}
+              {workflow.name}
             </Title>
-            <Text type="secondary">Visualização detalhada do fluxo BPM</Text>
+
+            <Text type="secondary">
+              Resumo do workflow e acesso ao Workflow Studio.
+            </Text>
           </div>
+        </Space>
+
+        <Space>
+          <Button
+            type="primary"
+            icon={<EditOutlined />}
+            onClick={() => navigate(`/workflows/${workflow.id}/studio`)}
+          >
+            Abrir Studio
+          </Button>
         </Space>
       </Space>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} md={12} xl={6}>
-          <Card bordered={false} style={{ borderRadius: 16 }}>
-            <Space>
-              <FileTextOutlined style={{ fontSize: 20, color: '#1677ff' }} />
-              <div>
-                <Text type="secondary">Nome do fluxo</Text>
-                <div>
-                  <Text strong>{currentWorkflow.name}</Text>
-                </div>
-              </div>
-            </Space>
+        <Col xs={24} md={6}>
+          <Card bordered={false} style={{ borderRadius: 18 }}>
+            <Text type="secondary">Status</Text>
+            <div style={{ marginTop: 8 }}>
+              <Tag color={getStatusColor(workflow.status)}>
+                {getStatusLabel(workflow.status)}
+              </Tag>
+            </div>
           </Card>
         </Col>
 
-        <Col xs={24} md={12} xl={6}>
-          <Card bordered={false} style={{ borderRadius: 16 }}>
-            <Space>
-              <Badge status="processing" />
-              <div>
-                <Text type="secondary">Versão</Text>
-                <div>
-                  <Text strong>{currentWorkflow.version}</Text>
-                </div>
-              </div>
-            </Space>
+        <Col xs={24} md={6}>
+          <Card bordered={false} style={{ borderRadius: 18 }}>
+            <Text type="secondary">Versão</Text>
+            <div style={{ marginTop: 8 }}>
+              <Text strong>{workflow.version}</Text>
+            </div>
           </Card>
         </Col>
 
-        <Col xs={24} md={12} xl={6}>
-          <Card bordered={false} style={{ borderRadius: 16 }}>
-            <Space>
-              <SwapOutlined style={{ fontSize: 20, color: '#722ed1' }} />
-              <div>
-                <Text type="secondary">Total de etapas</Text>
-                <div>
-                  <Text strong>{currentWorkflow.steps.length}</Text>
-                </div>
-              </div>
-            </Space>
+        <Col xs={24} md={6}>
+          <Card bordered={false} style={{ borderRadius: 18 }}>
+            <Text type="secondary">Tipo documental</Text>
+            <div style={{ marginTop: 8 }}>
+              <Text strong>{workflow.documentTypeName || '-'}</Text>
+            </div>
           </Card>
         </Col>
 
-        <Col xs={24} md={12} xl={6}>
-          <Card bordered={false} style={{ borderRadius: 16 }}>
-            <Space>
-              <ClockCircleOutlined style={{ fontSize: 20, color: '#fa8c16' }} />
-              <div>
-                <Text type="secondary">Modelo BPM</Text>
-                <div>
-                  <Text strong>Fluxo controlado</Text>
-                </div>
-              </div>
-            </Space>
+        <Col xs={24} md={6}>
+          <Card bordered={false} style={{ borderRadius: 18 }}>
+            <Text type="secondary">Diagrama BPMN</Text>
+            <div style={{ marginTop: 8 }}>
+              <Space>
+                <BranchesOutlined style={{ color: '#1677ff' }} />
+                <Text strong>
+                  {workflow.bpmnXml?.trim() ? 'Disponível' : 'Ainda não modelado'}
+                </Text>
+              </Space>
+            </div>
           </Card>
         </Col>
       </Row>
 
-      <Card bordered={false} style={{ marginBottom: 16, borderRadius: 16 }} title="Resumo do fluxo">
-        <Descriptions column={2}>
-          <Descriptions.Item label="Nome">{currentWorkflow.name}</Descriptions.Item>
-          <Descriptions.Item label="Versão">{currentWorkflow.version}</Descriptions.Item>
-          <Descriptions.Item label="Etapas">{currentWorkflow.steps.length}</Descriptions.Item>
-          <Descriptions.Item label="Descrição">
-            {currentWorkflow.description || '-'}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
-
-      <Card bordered={false} style={{ borderRadius: 16 }}>
+      <Card bordered={false} style={{ borderRadius: 20 }}>
         <Tabs
           items={[
             {
-              key: 'diagram',
-              label: 'Diagrama de Fluxo',
+              key: 'summary',
+              label: 'Resumo',
               children: (
                 <div style={{ paddingTop: 8 }}>
                   <Alert
                     type="info"
                     showIcon
-                    style={{ marginBottom: 12, borderRadius: 12 }}
-                    message="Editor visual habilitado"
-                    description="Agora você pode arrastar os nós manualmente. O layout é aplicado localmente nesta tela."
+                    style={{ marginBottom: 16, borderRadius: 16 }}
+                    message="Tela de consulta"
+                    description="A edição estrutural e operacional do processo fica concentrada no Workflow Studio."
                   />
 
-                  <WorkflowDiagram
-                    workflow={currentWorkflow}
-                    height={520}
-                    editable
-                    onStepClick={handleStepClick}
-                    onLayoutChange={handleLayoutChange}
-                  />
+                  <Descriptions column={2}>
+                    <Descriptions.Item label="Nome">
+                      {workflow.name}
+                    </Descriptions.Item>
+
+                    <Descriptions.Item label="Versão">
+                      {workflow.version}
+                    </Descriptions.Item>
+
+                    <Descriptions.Item label="Status">
+                      <Tag color={getStatusColor(workflow.status)}>
+                        {getStatusLabel(workflow.status)}
+                      </Tag>
+                    </Descriptions.Item>
+
+                    <Descriptions.Item label="Tipo documental">
+                      {workflow.documentTypeName || '-'}
+                    </Descriptions.Item>
+
+                    <Descriptions.Item label="Criado em">
+                      {formatDateTime(workflow.createdAt)}
+                    </Descriptions.Item>
+
+                    <Descriptions.Item label="Atualizado em">
+                      {formatDateTime(workflow.updatedAt)}
+                    </Descriptions.Item>
+
+                    <Descriptions.Item label="Descrição" span={2}>
+                      {workflow.description || '-'}
+                    </Descriptions.Item>
+                  </Descriptions>
                 </div>
               ),
             },
             {
-              key: 'list',
-              label: 'Lista de Etapas',
+              key: 'legacy-steps',
+              label: 'Etapas legadas',
               children: (
                 <div style={{ paddingTop: 8 }}>
-                  {orderedSteps.map((step) => {
-                    const responsibles = getResponsibles(step)
-                    const metadata = getMetadata(step)
-                    const receivesNotification = getReceivesNotification(step)
-                    const requiredNotification = getRequiredNotification(step)
+                  {legacySteps.length === 0 ? (
+                    <Empty description="As etapas agora são definidas principalmente no Studio BPMN" />
+                  ) : (
+                    <List
+                      itemLayout="vertical"
+                      dataSource={legacySteps}
+                      renderItem={(step: LegacyStepViewModel) => (
+                        <List.Item key={step.id || `${step.orderIndex}-${step.name}`}>
+                          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                            <Space wrap>
+                              <Text strong>{renderStepTitle(step)}</Text>
 
-                    return (
-                      <Card
-                        key={step.id}
-                        bordered={false}
-                        style={{
-                          marginBottom: 16,
-                          borderRadius: 18,
-                          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
-                          borderLeft: step.isInitial
-                            ? '5px solid #1677ff'
-                            : step.isFinal
-                              ? '5px solid #722ed1'
-                              : '5px solid #d9d9d9',
-                        }}
-                        title={
-                          <Space wrap>
-                            <Text strong style={{ fontSize: 16 }}>
-                              {step.orderIndex}. {step.name}
-                            </Text>
-                            {step.isInitial && (
-                              <Tag icon={<PlayCircleOutlined />} color="blue">
-                                Inicial
-                              </Tag>
-                            )}
-                            {step.isFinal && (
-                              <Tag icon={<StopOutlined />} color="purple">
-                                Final
-                              </Tag>
-                            )}
-                            {step.slaHours ? (
-                              <Tag icon={<ClockCircleOutlined />} color="gold">
-                                SLA: {step.slaHours}h
-                              </Tag>
+                              {step.isInitial ? <Tag color="blue">Inicial</Tag> : null}
+                              {step.isFinal ? <Tag color="purple">Final</Tag> : null}
+
+                              {typeof step.slaHours === 'number' ? (
+                                <Tag icon={<ClockCircleOutlined />} color="gold">
+                                  SLA: {step.slaHours}h
+                                </Tag>
+                              ) : null}
+                            </Space>
+
+                            {step.description ? (
+                              <Text type="secondary">{step.description}</Text>
+                            ) : null}
+
+                            {step.allowedActions && step.allowedActions.length > 0 ? (
+                              <Space wrap>
+                                {step.allowedActions.map((action: string) => (
+                                  <Tag key={`${step.id}-${action}`}>{action}</Tag>
+                                ))}
+                              </Space>
                             ) : null}
                           </Space>
-                        }
-                        extra={
-                          <Button
-                            icon={<EditOutlined />}
-                            size="small"
-                            onClick={() => handleStepClick(step)}
-                          >
-                            Editar
-                          </Button>
-                        }
+                        </List.Item>
+                      )}
+                    />
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'xml',
+              label: 'XML BPMN',
+              children: (
+                <div style={{ paddingTop: 8 }}>
+                  {workflow.bpmnXml?.trim() ? (
+                    <Card
+                      size="small"
+                      style={{
+                        borderRadius: 16,
+                        background: '#0f172a',
+                        color: '#e5e7eb',
+                      }}
+                    >
+                      <pre
+                        style={{
+                          margin: 0,
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          maxHeight: 620,
+                          overflow: 'auto',
+                          color: '#e5e7eb',
+                          fontSize: 12,
+                        }}
                       >
-                        {step.description && (
-                          <div style={{ marginBottom: 16 }}>
-                            <Text type="secondary">{step.description}</Text>
+                        {workflow.bpmnXml}
+                      </pre>
+                    </Card>
+                  ) : (
+                    <Empty description="Nenhum XML BPMN salvo para este workflow" />
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'actions',
+              label: 'Ações',
+              children: (
+                <div style={{ paddingTop: 8 }}>
+                  <Space direction="vertical" size={12}>
+                    <Card bordered={false} style={{ borderRadius: 16 }}>
+                      <Space>
+                        <EditOutlined style={{ color: '#1677ff' }} />
+                        <div>
+                          <Text strong>Abrir Workflow Studio</Text>
+                          <div>
+                            <Text type="secondary">
+                              Faça toda a edição estrutural e operacional em uma única tela.
+                            </Text>
                           </div>
-                        )}
+                        </div>
+                      </Space>
 
-                        <Row gutter={[16, 16]}>
-                          <Col xs={24} lg={12}>
-                            <Card
-                              size="small"
-                              title={
-                                <Space>
-                                  <UserOutlined />
-                                  <span>Responsáveis</span>
-                                </Space>
-                              }
-                              style={{ borderRadius: 12 }}
-                            >
-                              {responsibles.length > 0 ? (
-                                <Space wrap>
-                                  {responsibles.map((responsible, index) => (
-                                    <Tag key={`${step.id}-resp-${index}`} color="geekblue">
-                                      {renderResponsibleName(responsible)}
-                                    </Tag>
-                                  ))}
-                                </Space>
-                              ) : (
-                                <Text type="secondary">Nenhum responsável definido</Text>
-                              )}
-                            </Card>
-                          </Col>
+                      <div style={{ marginTop: 16 }}>
+                        <Button
+                          type="primary"
+                          onClick={() => navigate(`/workflows/${workflow.id}/studio`)}
+                        >
+                          Abrir Studio
+                        </Button>
+                      </div>
+                    </Card>
 
-                          <Col xs={24} lg={12}>
-                            <Card
-                              size="small"
-                              title={
-                                <Space>
-                                  <NotificationOutlined />
-                                  <span>Notificações</span>
-                                </Space>
-                              }
-                              style={{ borderRadius: 12 }}
-                            >
-                              <Space direction="vertical" size={8}>
-                                <Space>
-                                  {receivesNotification ? (
-                                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                                  ) : (
-                                    <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                                  )}
-                                  <Text>
-                                    Recebe notificação:{' '}
-                                    <Text strong>{receivesNotification ? 'Sim' : 'Não'}</Text>
-                                  </Text>
-                                </Space>
-                                <Space>
-                                  {requiredNotification ? (
-                                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                                  ) : (
-                                    <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                                  )}
-                                  <Text>
-                                    Notificação obrigatória:{' '}
-                                    <Text strong>{requiredNotification ? 'Sim' : 'Não'}</Text>
-                                  </Text>
-                                </Space>
-                              </Space>
-                            </Card>
-                          </Col>
-
-                          <Col xs={24}>
-                            <Card
-                              size="small"
-                              title={
-                                <Space>
-                                  <FileTextOutlined />
-                                  <span>Metadados da atividade</span>
-                                </Space>
-                              }
-                              style={{ borderRadius: 12 }}
-                            >
-                              {metadata.length > 0 ? (
-                                <List
-                                  size="small"
-                                  dataSource={metadata}
-                                  renderItem={(item, index) => {
-                                    const parsed = renderMetadataTag(item)
-                                    return (
-                                      <List.Item key={`${step.id}-meta-${index}`}>
-                                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                          <Space wrap>
-                                            <Text strong>{parsed.title}</Text>
-                                            {parsed.subtitle && (
-                                              <Tag color="default">{parsed.subtitle}</Tag>
-                                            )}
-                                            {parsed.required && <Tag color="red">Obrigatório</Tag>}
-                                            {parsed.multiple && (
-                                              <Tag color="cyan">Multivalorado</Tag>
-                                            )}
-                                          </Space>
-                                        </Space>
-                                      </List.Item>
-                                    )
-                                  }}
-                                />
-                              ) : (
-                                <Text type="secondary">
-                                  Nenhum metadado configurado para esta atividade
-                                </Text>
-                              )}
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} lg={12}>
-                            <Card size="small" title="Ações permitidas" style={{ borderRadius: 12 }}>
-                              {step.allowedActions.length > 0 ? (
-                                <Space wrap>
-                                  {step.allowedActions.map((action) => (
-                                    <Tag key={action} color={getActionColor(action)}>
-                                      {action}
-                                    </Tag>
-                                  ))}
-                                </Space>
-                              ) : (
-                                <Text type="secondary">Nenhuma ação permitida</Text>
-                              )}
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} lg={12}>
-                            <Card size="small" title="Transições" style={{ borderRadius: 12 }}>
-                              {step.transitions.length > 0 ? (
-                                <Space wrap>
-                                  {step.transitions.map((transition, index) => (
-                                    <Tag
-                                      key={transition.id ?? `${step.id}-transition-${index}`}
-                                      color={getActionColor(transition.triggerAction)}
-                                    >
-                                      {transition.triggerAction} →{' '}
-                                      {transition.toStepName || 'Destino não informado'}
-                                    </Tag>
-                                  ))}
-                                </Space>
-                              ) : (
-                                <Text type="secondary">Nenhuma transição configurada</Text>
-                              )}
-                            </Card>
-                          </Col>
-                        </Row>
-
-                        <Divider style={{ margin: '16px 0 0' }} />
-                      </Card>
-                    )
-                  })}
+                    <Card bordered={false} style={{ borderRadius: 16 }}>
+                      <Space>
+                        <FileTextOutlined style={{ color: '#1677ff' }} />
+                        <div>
+                          <Text strong>Resumo operacional</Text>
+                          <div>
+                            <Text type="secondary">
+                              Use esta tela para inspeção. Use o Studio para mudanças estruturais e funcionais.
+                            </Text>
+                          </div>
+                        </div>
+                      </Space>
+                    </Card>
+                  </Space>
                 </div>
               ),
             },
           ]}
         />
       </Card>
-
-      <StepEditDrawer
-        step={selectedStep}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        onSave={handleStepSave}
-      />
     </div>
   )
 }

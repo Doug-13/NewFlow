@@ -65,11 +65,14 @@ function resolveRoute(rawUrl: string): RouteResolution {
     [/^\/notificationTemplates(?:\/(.+))?$/, 'notificationTemplates'],
     [/^\/dashboard(?:\/(.+))?$/, 'dashboard'],
 
+    [/^\/organizationGroups(?:\/(.+))?$/, 'organizationGroups'],
+
     // aliases legados
     [/^\/organization\/units(?:\/(.+))?$/, 'organizationUnits'],
     [/^\/organization\/areas(?:\/(.+))?$/, 'organizationAreas'],
     [/^\/organization\/disciplines(?:\/(.+))?$/, 'organizationDisciplines'],
     [/^\/organization\/roles(?:\/(.+))?$/, 'organizationRoles'],
+    [/^\/organization\/groups(?:\/(.+))?$/, 'organizationGroups'],
     [/^\/document-instances(?:\/(.+))?$/, 'documentInstances'],
     [/^\/document-types(?:\/(.+))?$/, 'documentTypes'],
     [/^\/metadata\/sets(?:\/(.+))?$/, 'metadataSets'],

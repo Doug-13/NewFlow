@@ -1,26 +1,29 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Form, Input, Button, Select, Card, Typography, Space, message, Upload } from 'antd'
 import { UploadOutlined, ArrowLeftOutlined } from '@ant-design/icons'
-import { getDocumentTypes } from '../../api/documentTypes'
 import { getWorkflows } from '../../api/workflows'
-import { getUsers } from '../../api/users'
 import { createDocument, uploadFile } from '../../api/documents'
 
 const { Title } = Typography
 
 export function DocumentNewPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const preselectedWorkflowId = searchParams.get('workflowId')
   const qc = useQueryClient()
   const [form] = Form.useForm()
-  const [selectedWorkflow, setSelectedWorkflow] = useState<any>(null)
-  const [assignments, setAssignments] = useState<any[]>([])
   const [fileToUpload, setFileToUpload] = useState<File | null>(null)
 
-  const { data: docTypes } = useQuery({ queryKey: ['document-types'], queryFn: () => getDocumentTypes(true) })
   const { data: workflows } = useQuery({ queryKey: ['workflows'], queryFn: getWorkflows })
-  const { data: users } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+
+  useEffect(() => {
+    if (!preselectedWorkflowId || !workflows?.length) return
+    const wf = workflows.find((w: any) => w.id === preselectedWorkflowId)
+    if (!wf) return
+    form.setFieldValue('workflowId', wf.id)
+  }, [preselectedWorkflowId, workflows, form])
 
   const mutation = useMutation({
     mutationFn: createDocument,
@@ -34,23 +37,10 @@ export function DocumentNewPage() {
     }
   })
 
-  const handleWorkflowChange = (id: string) => {
-    const wf = workflows?.find(w => w.id === id)
-    setSelectedWorkflow(wf ?? null)
-    setAssignments(wf?.steps.map(s => ({ workflowStepId: s.id, assignedToUserId: '', stepName: s.name })) ?? [])
-  }
-
   const handleSubmit = (values: any) => {
-    if (assignments.some(a => !a.assignedToUserId)) {
-      message.error('Atribua um responsável para cada etapa do workflow.')
-      return
-    }
     mutation.mutate({
       title: values.title,
-      description: values.description,
-      documentTypeId: values.documentTypeId,
       workflowId: values.workflowId,
-      stepAssignments: assignments.map(a => ({ workflowStepId: a.workflowStepId, assignedToUserId: a.assignedToUserId }))
     })
   }
 
@@ -63,20 +53,14 @@ export function DocumentNewPage() {
 
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Card style={{ marginBottom: 16 }}>
-          <Form.Item label="Título" name="title" rules={[{ required: true }]}>
+          <Form.Item label="Título (Nome do documento)" name="title" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Descrição" name="description">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item label="Tipo de Documento" name="documentTypeId" rules={[{ required: true }]}>
-            <Select options={docTypes?.map(d => ({ label: d.name, value: d.id }))} placeholder="Selecione..." />
-          </Form.Item>
-          <Form.Item label="Workflow" name="workflowId" rules={[{ required: true }]}>
+          <Form.Item label="Processo / Workflow" name="workflowId" rules={[{ required: true }]}>
             <Select
-              options={workflows?.map(w => ({ label: `${w.name} (v${w.version})`, value: w.id }))}
+              options={workflows?.map((w: any) => ({ label: `${w.name}${w.version ? ` (v${w.version})` : ''}`, value: w.id }))}
               placeholder="Selecione..."
-              onChange={handleWorkflowChange}
+              disabled={!!preselectedWorkflowId}
             />
           </Form.Item>
           <Form.Item label="Arquivo inicial (opcional)">
@@ -85,24 +69,6 @@ export function DocumentNewPage() {
             </Upload>
           </Form.Item>
         </Card>
-
-        {selectedWorkflow && assignments.length > 0 && (
-          <Card title="Responsáveis por Etapa" style={{ marginBottom: 16 }}>
-            {assignments.map((a, i) => (
-              <Form.Item key={a.workflowStepId} label={`Etapa: ${a.stepName}`} required>
-                <Select
-                  options={users?.map((u: { id: string; name: string; role: string }) => ({ label: `${u.name} (${u.role})`, value: u.id }))}
-                  placeholder="Selecione o responsável..."
-                  onChange={v => {
-                    const newA = [...assignments]
-                    newA[i] = { ...newA[i], assignedToUserId: v }
-                    setAssignments(newA)
-                  }}
-                />
-              </Form.Item>
-            ))}
-          </Card>
-        )}
 
         <Button type="primary" htmlType="submit" loading={mutation.isPending}>Criar Documento</Button>
       </Form>

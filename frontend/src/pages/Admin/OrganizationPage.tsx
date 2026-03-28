@@ -11,7 +11,8 @@ import {
   getAreas, createArea, updateArea, deleteArea,
   getDisciplines, createDiscipline, updateDiscipline, deleteDiscipline,
   getOrgRoles, createOrgRole, updateOrgRole, deleteOrgRole,
-  type UnitDto, type AreaDto, type DisciplineDto, type OrgRoleDto,
+  getOrgGroups, createOrgGroup, updateOrgGroup, deleteOrgGroup,
+  type UnitDto, type AreaDto, type DisciplineDto, type OrgRoleDto, type OrgGroupDto,
 } from '../../api/organization'
 import { getUsers } from '../../api/users'
 
@@ -620,6 +621,15 @@ export function OrganizationPage() {
             <CrudTable<OrgRoleDto>
               queryKey="org-roles" fetchFn={getOrgRoles}
               createFn={createOrgRole} updateFn={updateOrgRole} deleteFn={deleteOrgRole}
+            />
+          ),
+        },
+        {
+          key: 'groups', label: 'Grupos',
+          children: (
+            <CrudTable<OrgGroupDto>
+              queryKey="org-groups" fetchFn={getOrgGroups}
+              createFn={createOrgGroup} updateFn={updateOrgGroup} deleteFn={deleteOrgGroup}
             />
           ),
         },

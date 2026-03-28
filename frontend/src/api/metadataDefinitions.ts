@@ -3,6 +3,16 @@ import { api } from './client'
 export interface MetadataOptionDto {
   value: string
   label: string
+  sigla?: string
+}
+
+export interface MetadataTableColumnDto {
+  id: string
+  metadataDefinitionId: string
+  internalName: string
+  externalName: string
+  fieldType: string
+  orderIndex: number
 }
 
 export interface MetadataDefinitionDto {
@@ -10,11 +20,15 @@ export interface MetadataDefinitionDto {
   name: string
   label: string
   fieldType: string
+  maskType?: string | null
   isRequired: boolean
   isActive: boolean
   orderIndex: number
+  metadataSetId?: string
+  metadataSetName?: string
   documentTypeId?: string
   options?: MetadataOptionDto[]
+  tableColumns?: MetadataTableColumnDto[]
 }
 
 export interface MetadataValueDto {
@@ -22,31 +36,62 @@ export interface MetadataValueDto {
   name: string
   label: string
   fieldType: string
+  maskType?: string | null
   isRequired: boolean
   value: any
+  options?: MetadataOptionDto[]
+  tableColumns?: MetadataTableColumnDto[]
 }
 
-// tipo enxuto para usar na tela de EnvironmentSettings
 export interface MetadataDefinitionListItem {
   id: string
   name: string
   label: string
+  fieldType: string
+  isRequired: boolean
+  isActive: boolean
+  orderIndex: number
+  metadataSetId?: string
+  metadataSetName?: string
+  documentTypeId?: string
+}
+
+export type GetMetadataDefinitionsParams = {
+  metadataSetId?: string
+  documentTypeId?: string
 }
 
 export const getMetadataDefinitions = async (
-  documentTypeId?: string,
+  params?: GetMetadataDefinitionsParams,
 ): Promise<MetadataDefinitionListItem[]> => {
   const data = (
     await api.get('/metadata/definitions', {
-      params: documentTypeId ? { documentTypeId } : {},
+      params: {
+        ...(params?.metadataSetId ? { metadataSetId: params.metadataSetId } : {}),
+        ...(params?.documentTypeId ? { documentTypeId: params.documentTypeId } : {}),
+      },
     })
   ).data as MetadataDefinitionDto[]
 
-  return data.map(item => ({
-    id: item.id,
-    name: item.name,
-    label: item.label,
-  }))
+  return data
+    .filter((item) => item.isActive !== false)
+    .sort((a, b) => {
+      const bySet = (a.metadataSetName ?? '').localeCompare(b.metadataSetName ?? '')
+      if (bySet !== 0) return bySet
+      return (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
+    })
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      label: item.label,
+      fieldType: item.fieldType,
+      isRequired: item.isRequired,
+      isActive: item.isActive,
+      orderIndex: item.orderIndex,
+      metadataSetId: item.metadataSetId,
+      metadataSetName: item.metadataSetName,
+      documentTypeId: item.documentTypeId,
+    }))
 }
 
 export const createMetadataDefinition = async (

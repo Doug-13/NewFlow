@@ -1,219 +1,391 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Table, Button, Tag, Typography, Space, Card } from 'antd'
-import {
-  PlusOutlined,
-  EyeOutlined,
-  EditOutlined,
-  ApartmentOutlined,
-} from '@ant-design/icons'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getWorkflows } from '../../api/workflows'
-import type { Workflow } from '../../types'
-import { WorkflowNewPage } from './WorkflowNew'
-import { WorkflowDetailPage } from './WorkflowDetail'
+import {
+  Button,
+  Card,
+  Empty,
+  Input,
+  Modal,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
+import type { ColumnsType } from 'antd/es/table'
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  SearchOutlined,
+} from '@ant-design/icons'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 const { Title, Text } = Typography
 
-type WorkflowsPageProps = {
-  embedded?: boolean
+type WorkflowStatus = 'draft' | 'active' | 'inactive' | 'archived'
+
+type WorkflowListItem = {
+  id: string
+  name: string
+  description?: string
+  documentTypeId?: string
+  documentTypeName?: string
+  version?: string
+  status: WorkflowStatus
+  stepsCount?: number
+  updatedAt: string
+  createdAt?: string
 }
 
-type EmbeddedView = 'list' | 'new' | 'detail'
+const STORAGE_KEY = 'gestao-docs:workflows'
 
-type WorkflowListContentProps = {
-  embedded?: boolean
-  onCreate?: () => void
-  onView?: (workflowId: string) => void
-  onEdit?: (workflowId: string) => void
+function getStatusColor(status: WorkflowStatus) {
+  switch (status) {
+    case 'active':
+      return 'green'
+    case 'draft':
+      return 'gold'
+    case 'inactive':
+      return 'default'
+    case 'archived':
+      return 'red'
+    default:
+      return 'default'
+  }
 }
 
-function WorkflowListContent({
-  embedded = false,
-  onCreate,
-  onView,
-  onEdit,
-}: WorkflowListContentProps) {
+function getStatusLabel(status: WorkflowStatus) {
+  switch (status) {
+    case 'active':
+      return 'Ativo'
+    case 'draft':
+      return 'Rascunho'
+    case 'inactive':
+      return 'Inativo'
+    case 'archived':
+      return 'Arquivado'
+    default:
+      return status
+  }
+}
+
+function safeParseJson<T>(value: string | null, fallback: T): T {
+  if (!value) return fallback
+
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
+}
+
+function normalizeWorkflow(item: any): WorkflowListItem {
+  return {
+    id: String(item?.id ?? crypto.randomUUID()),
+    name: String(item?.name ?? item?.title ?? 'Workflow sem nome'),
+    description:
+      typeof item?.description === 'string' ? item.description : undefined,
+    documentTypeId:
+      typeof item?.documentTypeId === 'string' ? item.documentTypeId : undefined,
+    documentTypeName:
+      typeof item?.documentTypeName === 'string'
+        ? item.documentTypeName
+        : typeof item?.documentType === 'string'
+          ? item.documentType
+          : undefined,
+    version:
+      typeof item?.version === 'string'
+        ? item.version
+        : typeof item?.revision === 'string'
+          ? item.revision
+          : '1.0',
+    status:
+      item?.status === 'active' ||
+      item?.status === 'draft' ||
+      item?.status === 'inactive' ||
+      item?.status === 'archived'
+        ? item.status
+        : 'draft',
+    stepsCount:
+      typeof item?.stepsCount === 'number'
+        ? item.stepsCount
+        : Array.isArray(item?.steps)
+          ? item.steps.length
+          : Array.isArray(item?.nodes)
+            ? item.nodes.length
+            : 0,
+    updatedAt:
+      typeof item?.updatedAt === 'string'
+        ? item.updatedAt
+        : new Date().toISOString(),
+    createdAt:
+      typeof item?.createdAt === 'string' ? item.createdAt : undefined,
+  }
+}
+
+function loadWorkflows(): WorkflowListItem[] {
+  const raw = safeParseJson<any[]>(localStorage.getItem(STORAGE_KEY), [])
+
+  if (!Array.isArray(raw)) return []
+
+  return raw.map(normalizeWorkflow)
+}
+
+function saveWorkflows(items: WorkflowListItem[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+}
+
+function seedWorkflowsIfEmpty() {
+  const current = loadWorkflows()
+  if (current.length > 0) return
+
+  const seed: WorkflowListItem[] = [
+    {
+      id: crypto.randomUUID(),
+      name: 'Fluxo de Contratos',
+      description: 'Aprovação e revisão documental de contratos.',
+      documentTypeId: 'doc-type-contracts',
+      documentTypeName: 'Contratos',
+      version: '1.0',
+      status: 'active',
+      stepsCount: 6,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: crypto.randomUUID(),
+      name: 'Fluxo de Procedimentos',
+      description: 'Criação, revisão e aprovação de procedimentos internos.',
+      documentTypeId: 'doc-type-procedures',
+      documentTypeName: 'Procedimentos',
+      version: '0.1',
+      status: 'draft',
+      stepsCount: 4,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ]
+
+  saveWorkflows(seed)
+}
+
+export function WorkflowsPage() {
   const navigate = useNavigate()
 
-  const { data = [], isLoading } = useQuery<Workflow[]>({
-    queryKey: ['workflows'],
-    queryFn: getWorkflows,
-  })
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [items, setItems] = useState<WorkflowListItem[]>([])
 
-  const columns = useMemo(
-    () => [
-      {
-        title: 'Nome',
-        dataIndex: 'name',
-        key: 'name',
-        render: (value: string) => <Text strong>{value}</Text>,
-      },
-      {
-        title: 'Descrição',
-        dataIndex: 'description',
-        key: 'description',
-        render: (value?: string) => value || '-',
-      },
-      {
-        title: 'Versão',
-        dataIndex: 'version',
-        key: 'version',
-        width: 100,
-      },
-      {
-        title: 'Etapas',
-        key: 'steps',
-        width: 100,
-        render: (_: unknown, record: Workflow) => record.steps?.length ?? 0,
-      },
-      {
-        title: 'Status',
-        key: 'isActive',
-        width: 110,
-        render: (_: unknown, record: Workflow) => (
-          <Tag color={record.isActive ? 'green' : 'red'}>
-            {record.isActive ? 'Ativo' : 'Inativo'}
-          </Tag>
-        ),
-      },
-      {
-        title: 'Ações',
-        key: 'actions',
-        width: 180,
-        render: (_: unknown, record: Workflow) => (
-          <Space>
-            <Button
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => {
-                if (embedded) {
-                  onView?.(record.id)
-                  return
-                }
-                navigate(`/workflows/${record.id}`)
-              }}
-            >
-              Ver
-            </Button>
+  useEffect(() => {
+    seedWorkflowsIfEmpty()
+    setItems(loadWorkflows())
+    setLoading(false)
+  }, [])
 
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => {
-                if (embedded) {
-                  onEdit?.(record.id)
-                  return
-                }
-                navigate(`/workflows/${record.id}/edit`)
-              }}
-            >
-              Editar
-            </Button>
-          </Space>
-        ),
+  const filteredItems = useMemo(() => {
+    const term = search.trim().toLowerCase()
+
+    if (!term) return items
+
+    return items.filter((item) => {
+      return (
+        item.name.toLowerCase().includes(term) ||
+        (item.description ?? '').toLowerCase().includes(term) ||
+        (item.documentTypeName ?? '').toLowerCase().includes(term) ||
+        item.status.toLowerCase().includes(term) ||
+        (item.version ?? '').toLowerCase().includes(term)
+      )
+    })
+  }, [items, search])
+
+  const handleDelete = (workflow: WorkflowListItem) => {
+    Modal.confirm({
+      title: 'Excluir workflow',
+      content: `Deseja realmente excluir o workflow "${workflow.name}"?`,
+      okText: 'Excluir',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancelar',
+      onOk: () => {
+        const nextItems = items.filter((item) => item.id !== workflow.id)
+        setItems(nextItems)
+        saveWorkflows(nextItems)
+        message.success('Workflow excluído com sucesso.')
       },
-    ],
-    [embedded, navigate, onEdit, onView],
-  )
+    })
+  }
+
+  const columns: ColumnsType<WorkflowListItem> = [
+    {
+      title: 'Workflow',
+      dataIndex: 'name',
+      key: 'name',
+      render: (_, record) => (
+        <div>
+          <div style={{ fontWeight: 600 }}>{record.name}</div>
+          <Text type="secondary">
+            {record.description || 'Sem descrição informada'}
+          </Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Tipo documental',
+      dataIndex: 'documentTypeName',
+      key: 'documentTypeName',
+      width: 180,
+      render: (value?: string) =>
+        value ? <Tag>{value}</Tag> : <Text type="secondary">Não vinculado</Text>,
+    },
+    {
+      title: 'Versão',
+      dataIndex: 'version',
+      key: 'version',
+      width: 100,
+      render: (value?: string) => value ?? '-',
+    },
+    {
+      title: 'Etapas',
+      dataIndex: 'stepsCount',
+      key: 'stepsCount',
+      width: 100,
+      render: (value?: number) => value ?? 0,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (value: WorkflowStatus) => (
+        <Tag color={getStatusColor(value)}>{getStatusLabel(value)}</Tag>
+      ),
+    },
+    {
+      title: 'Atualizado em',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      width: 180,
+      render: (value: string) => {
+        try {
+          return format(new Date(value), "dd/MM/yyyy 'às' HH:mm", {
+            locale: ptBR,
+          })
+        } catch {
+          return value
+        }
+      },
+    },
+    {
+      title: 'Ações',
+      key: 'actions',
+      width: 220,
+      fixed: 'right',
+      render: (_, record) => (
+        <Space wrap>
+          <Button
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/workflows/${record.id}`)}
+          >
+            Visualizar
+          </Button>
+
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => navigate(`/workflows/${record.id}/studio`)}
+          >
+            Studio
+          </Button>
+
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => handleDelete(record)}
+          >
+            Excluir
+          </Button>
+        </Space>
+      ),
+    },
+  ]
 
   return (
-    <div
-      style={{
-        padding: embedded ? 0 : 24,
-        background: embedded ? 'transparent' : '#f5f7fb',
-        minHeight: embedded ? 'auto' : '100vh',
-      }}
-    >
-      <Card bordered={false} style={{ borderRadius: 16, marginBottom: 16 }}>
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Card bordered={false}>
         <div
           style={{
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center',
             gap: 16,
             flexWrap: 'wrap',
+            alignItems: 'flex-start',
           }}
         >
-          <Space>
-            <ApartmentOutlined style={{ fontSize: 22, color: '#1677ff' }} />
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                Workflows
-              </Title>
-              <Text type="secondary">Gerencie os fluxos no padrão BPM</Text>
-            </div>
-          </Space>
+          <div>
+            <Title level={3} style={{ margin: 0 }}>
+              Workflows
+            </Title>
 
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              if (embedded) {
-                onCreate?.()
-                return
-              }
-              navigate('/workflows/new')
-            }}
-          >
-            Novo Workflow
-          </Button>
+            <Text type="secondary">
+              Gerencie os fluxos e edite tudo em um único Workflow Studio.
+            </Text>
+          </div>
+
+          <Space wrap>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => navigate('/workflows/new')}
+            >
+              Novo workflow
+            </Button>
+          </Space>
         </div>
       </Card>
 
-      <Card bordered={false} style={{ borderRadius: 16 }}>
-        <Table
-          dataSource={data}
-          columns={columns}
-          rowKey="id"
-          loading={isLoading}
-          pagination={{ pageSize: 10 }}
-        />
+      <Card bordered={false}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Input
+              allowClear
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar workflow por nome, descrição, tipo ou status"
+              prefix={<SearchOutlined />}
+              style={{ maxWidth: 420 }}
+            />
+
+            <Space wrap>
+              <Button onClick={() => navigate('/workflows/new')}>
+                Criar no Studio
+              </Button>
+            </Space>
+          </div>
+
+          <Table<WorkflowListItem>
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={filteredItems}
+            scroll={{ x: 1200 }}
+            locale={{
+              emptyText: <Empty description="Nenhum workflow encontrado" />,
+            }}
+            pagination={{
+              pageSize: 8,
+              showSizeChanger: false,
+            }}
+          />
+        </Space>
       </Card>
-    </div>
-  )
-}
-
-export function WorkflowsPage({ embedded = false }: WorkflowsPageProps) {
-  const [view, setView] = useState<EmbeddedView>('list')
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
-
-  if (!embedded) {
-    return <WorkflowListContent />
-  }
-
-  if (view === 'new') {
-    return (
-      <WorkflowNewPage
-        embedded
-        onCancel={() => setView('list')}
-        onSaved={() => setView('list')}
-      />
-    )
-  }
-
-  if (view === 'detail' && selectedWorkflowId) {
-    return (
-      <WorkflowDetailPage
-        embedded
-        workflowId={selectedWorkflowId}
-        onBack={() => setView('list')}
-      />
-    )
-  }
-
-  return (
-    <WorkflowListContent
-      embedded
-      onCreate={() => setView('new')}
-      onView={(workflowId) => {
-        setSelectedWorkflowId(workflowId)
-        setView('detail')
-      }}
-      onEdit={(workflowId) => {
-        setSelectedWorkflowId(workflowId)
-        setView('detail')
-      }}
-    />
+    </Space>
   )
 }

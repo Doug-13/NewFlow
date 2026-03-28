@@ -45,7 +45,7 @@ export interface DocumentType {
    WORKFLOWS
 ========================================================= */
 
-export type WorkflowEventType =
+  export type WorkflowEventType =
   | 'notification'
   | 'flow-change'
   | 'extra-check'
@@ -58,6 +58,7 @@ export type WorkflowEventTrigger =
   | 'on-enter'
   | 'on-exit'
   | 'on-transition'
+  | 'on-end'
   | 'manual'
   | 'scheduled'
 
@@ -74,22 +75,14 @@ export type WorkflowEventDefinition = {
   trigger?: WorkflowEventTrigger
   description?: string
   active?: boolean
-
-  /* Notificações */
   notificationTemplateIds?: string[]
   notificationTemplateNames?: string[]
-
-  /* Mudança de fluxo / abertura de outro fluxo */
   targetWorkflowId?: string
   targetWorkflowName?: string
   targetStepId?: string
   targetStepName?: string
-
-  /* Verificações extras */
   verificationType?: WorkflowExtraCheckType
   blocking?: boolean
-
-  /* Campo livre para necessidades futuras */
   config?: Record<string, unknown>
 }
 
@@ -98,6 +91,27 @@ export type WorkflowStartConfig = {
   description?: string
   initialStepId?: string
   events?: WorkflowEventDefinition[]
+}
+
+export type WorkflowEndConfig = {
+  name?: string
+  description?: string
+  events?: WorkflowEventDefinition[]
+}
+
+export type WorkflowNodePosition = {
+  x: number
+  y: number
+}
+
+export type WorkflowEdgeControl = {
+  bendX?: number
+  routeY?: number
+}
+
+export type WorkflowLayout = {
+  nodePositions?: Record<string, WorkflowNodePosition>
+  edgeControls?: Record<string, WorkflowEdgeControl>
 }
 
 export type WorkflowTransition = {
@@ -141,8 +155,6 @@ export type WorkflowStep = {
   receivesNotification?: boolean
   requiredNotification?: boolean
   metadata?: WorkflowMetadata[]
-
-  /* Eventos da etapa */
   events?: WorkflowEventDefinition[]
 }
 
@@ -154,9 +166,12 @@ export type Workflow = {
   isActive?: boolean
   steps: WorkflowStep[]
   startConfig?: WorkflowStartConfig
+  endConfig?: WorkflowEndConfig
   layout?: WorkflowLayout
-}
 
+  // novo: xml BPMN persistido no front
+  bpmnXml?: string
+}
 /* =========================================================
    DOCUMENTOS
 ========================================================= */
@@ -223,7 +238,7 @@ export interface DashboardSummary {
   approvedToday: number
   rejectedToday: number
   myUrgentTasks: ApprovalTask[]
-} 
+}
 
 export interface UserListItem {
   id: string
@@ -234,11 +249,3 @@ export interface UserListItem {
   createdAt: string
 }
 
-export type WorkflowNodePosition = {
-  x: number
-  y: number
-}
-
-export type WorkflowLayout = {
-  nodePositions?: Record<string, WorkflowNodePosition>
-}

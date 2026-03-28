@@ -7,11 +7,11 @@ import {
 import type { UploadChangeParam, UploadFile } from 'antd/es/upload/interface'
 import type { UploadProps } from 'antd'
 import {
-  PlusOutlined, UserOutlined, UploadOutlined, ApartmentOutlined, DeleteOutlined, DownloadOutlined, FileAddOutlined,
+  PlusOutlined, UserOutlined, UploadOutlined, ApartmentOutlined, DeleteOutlined, DownloadOutlined, FileAddOutlined, TeamOutlined,
 } from '@ant-design/icons'
 import { getUsers, createUser, updateUser } from '../../api/users'
 import type { UserItem } from '../../api/users'
-import { getUnits, getAreas, getDisciplines, getOrgRoles } from '../../api/organization'
+import { getUnits, getAreas, getDisciplines, getOrgRoles, getOrgGroups, type OrgGroupDto } from '../../api/organization'
 import './UsersPage.css'
 
 const { Title, Text } = Typography
@@ -36,6 +36,7 @@ type ExtendedUserListItem = UserItem & {
   position?: string
   notes?: string
   positions?: UserPosition[]
+  groupIds?: string[]
   substituteId?: string
   substituteName?: string
   environments?: string[]
@@ -91,6 +92,70 @@ function maskCpf(value: string): string {
   if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`
   if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`
   return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`
+}
+
+// ─── GroupsTab ────────────────────────────────────────────────────────────────
+
+function GroupsTab({ selectedGroupIds, onChange }: {
+  selectedGroupIds: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const [selectValue, setSelectValue] = useState<string | undefined>()
+  const { data: allGroups = [] } = useQuery({ queryKey: ['org-groups'], queryFn: getOrgGroups })
+
+  const handleAdd = () => {
+    if (!selectValue || selectedGroupIds.includes(selectValue)) return
+    onChange([...selectedGroupIds, selectValue])
+    setSelectValue(undefined)
+  }
+
+  const availableOptions = allGroups
+    .filter((g: OrgGroupDto) => !selectedGroupIds.includes(g.id))
+    .map((g: OrgGroupDto) => ({ label: g.code ? `${g.name} (${g.code})` : g.name, value: g.id }))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ background: '#f5f7fb', borderRadius: 10, padding: 16, border: '1px solid #eee' }}>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>Adicionar grupo</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Select
+            style={{ flex: 1 }}
+            placeholder="Selecione um grupo..."
+            value={selectValue}
+            onChange={setSelectValue}
+            options={availableOptions}
+            showSearch
+            optionFilterProp="label"
+            allowClear
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!selectValue}>
+            Adicionar
+          </Button>
+        </div>
+      </div>
+      {selectedGroupIds.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhum grupo selecionado" />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {selectedGroupIds.map((id) => {
+            const group = allGroups.find((g: OrgGroupDto) => g.id === id)
+            if (!group) return null
+            return (
+              <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#fff', border: '1px solid #eee', borderRadius: 8 }}>
+                <Space>
+                  <TeamOutlined style={{ color: '#1677ff' }} />
+                  <span>{group.name}</span>
+                  {group.code && <Tag style={{ fontFamily: 'monospace', fontSize: 11 }}>{group.code}</Tag>}
+                </Space>
+                <Button type="text" danger icon={<DeleteOutlined />} size="small"
+                  onClick={() => onChange(selectedGroupIds.filter((gid) => gid !== id))} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── PositionsTab ─────────────────────────────────────────────────────────────
@@ -194,6 +259,7 @@ export function UsersPage() {
   const [editingUser, setEditingUser] = useState<ExtendedUserListItem | null>(null)
   const [activeTab, setActiveTab] = useState('data')
   const [positions, setPositions] = useState<UserPosition[]>([])
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
   const [form] = Form.useForm<UserFormValues>()
   const qc = useQueryClient()
   const [photoPreview, setPhotoPreview] = useState<string | undefined>()
@@ -205,6 +271,7 @@ export function UsersPage() {
   const [filterRole, setFilterRole] = useState<string | undefined>()
   const [filterEnv, setFilterEnv] = useState<string | undefined>()
   const [filterStatus, setFilterStatus] = useState<string | undefined>()
+  const [filterGroup, setFilterGroup] = useState<string | undefined>()
   const [search, setSearch] = useState<string>('')  // busca por nome/email
 
   // ── Importação em lote ────────────────────────────────────────────────────
@@ -214,6 +281,7 @@ export function UsersPage() {
   const [bulkPreview, setBulkPreview] = useState<any[]>([])
 
   const { data: allUsers, isLoading } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+  const { data: allGroups = [] } = useQuery({ queryKey: ['org-groups'], queryFn: getOrgGroups })
 
   // Listas únicas para os selects de filtro
   const deptOptions = useMemo(() => {
@@ -245,8 +313,9 @@ export function UsersPage() {
     if (filterRole)   rows = rows.filter((r) => r.role === filterRole)
     if (filterEnv)    rows = rows.filter((r) => r.environments?.includes(filterEnv))
     if (filterStatus) rows = rows.filter((r) => (r.status ?? 'active') === filterStatus)
+    if (filterGroup)  rows = rows.filter((r) => r.groupIds?.includes(filterGroup))
     return rows
-  }, [allUsers, search, filterDept, filterJob, filterRole, filterEnv, filterStatus])
+  }, [allUsers, search, filterDept, filterJob, filterRole, filterEnv, filterStatus, filterGroup])
 
   const createMutation = useMutation({
     mutationFn: createUser,
@@ -377,12 +446,12 @@ export function UsersPage() {
 
   const handleCloseModal = () => {
     setOpen(false); setEditingUser(null); setActiveTab('data')
-    setPositions([]); form.resetFields()
+    setPositions([]); setSelectedGroupIds([]); form.resetFields()
     setPhotoPreview(undefined); setFileList([])
   }
 
   const handleOpenCreate = () => {
-    setEditingUser(null); setActiveTab('data'); setPositions([])
+    setEditingUser(null); setActiveTab('data'); setPositions([]); setSelectedGroupIds([])
     form.setFieldsValue({ role: 'Operador', status: 'active' })
     setPhotoPreview(undefined); setFileList([]); setOpen(true)
   }
@@ -390,6 +459,7 @@ export function UsersPage() {
   const handleOpenEdit = (user: ExtendedUserListItem) => {
     setEditingUser(user); setActiveTab('data')
     setPositions(user.positions ?? [])
+    setSelectedGroupIds(user.groupIds ?? [])
     form.setFieldsValue({
       name: user.name, email: user.email, password: '',
       role: user.role, cpf: user.cpf, phone: user.phone,
@@ -428,6 +498,7 @@ export function UsersPage() {
       phone: values.phone?.replace(/\D/g, '') || undefined,
       photoUrl: photoPreview,
       positions,
+      groupIds: selectedGroupIds,
       isActive: values.status !== 'inactive',
     }
     if (editingUser) {
@@ -617,6 +688,19 @@ export function UsersPage() {
       ),
       children: <PositionsTab positions={positions} onChange={setPositions} />,
     },
+    {
+      key: 'groups',
+      label: (
+        <Space size={6}>
+          <TeamOutlined />
+          Grupos
+          {selectedGroupIds.length > 0 && (
+            <Tag color="geekblue" style={{ marginLeft: 2, lineHeight: '18px' }}>{selectedGroupIds.length}</Tag>
+          )}
+        </Space>
+      ),
+      children: <GroupsTab selectedGroupIds={selectedGroupIds} onChange={setSelectedGroupIds} />,
+    },
   ]
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -660,10 +744,13 @@ export function UsersPage() {
           options={envOptions} value={filterEnv} onChange={setFilterEnv} />
         <Select allowClear placeholder="Status" style={{ width: 130 }}
           options={statusOptions} value={filterStatus} onChange={setFilterStatus} />
-        {(search || filterDept || filterJob || filterRole || filterEnv || filterStatus) && (
+        <Select allowClear placeholder="Grupo" style={{ width: 150 }}
+          options={(allGroups as OrgGroupDto[]).map((g) => ({ label: g.name, value: g.id }))}
+          value={filterGroup} onChange={setFilterGroup} optionFilterProp="label" showSearch />
+        {(search || filterDept || filterJob || filterRole || filterEnv || filterStatus || filterGroup) && (
           <Button size="small" type="link" onClick={() => {
             setSearch(''); setFilterDept(undefined); setFilterJob(undefined)
-            setFilterRole(undefined); setFilterEnv(undefined); setFilterStatus(undefined)
+            setFilterRole(undefined); setFilterEnv(undefined); setFilterStatus(undefined); setFilterGroup(undefined)
           }}>
             Limpar filtros
           </Button>

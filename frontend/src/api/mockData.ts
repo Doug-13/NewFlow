@@ -79,6 +79,16 @@ export type OrganizationRole = {
   code?: string
 }
 
+export type OrganizationGroup = {
+  id: string
+  tenantId: string
+  name: string
+  description: string
+  isActive: boolean
+  createdAt: string
+  code?: string
+}
+
 export type DocumentInstance = {
   id: string
   tenantId: string
@@ -217,6 +227,7 @@ export type MockDatabase = {
   organizationAreas: OrganizationArea[]
   organizationDisciplines: OrganizationDiscipline[]
   organizationRoles: OrganizationRole[]
+  organizationGroups: OrganizationGroup[]
   documentInstances: DocumentInstance[]
   tasks: Task[]
   workflows: Workflow[]
@@ -279,6 +290,12 @@ export const MOCK_ORGANIZATION_DISCIPLINES: OrganizationDiscipline[] = [
   { id: 'disc-4', tenantId: 'tenant-1', name: 'Controle Financeiro', description: 'Orçamento e controlling', isActive: true, createdAt: '2024-01-10T08:00:00Z', code: 'CTL' },
   { id: 'disc-5', tenantId: 'tenant-1', name: 'Gestão de Pessoas', description: 'Recrutamento e desenvolvimento', isActive: true, createdAt: '2024-01-10T08:00:00Z', code: 'GP' },
   { id: 'disc-6', tenantId: 'tenant-1', name: 'Engenharia de Software', description: 'Desenvolvimento de sistemas', isActive: true, createdAt: '2024-01-10T08:00:00Z', code: 'ENG-SW' },
+]
+
+export const MOCK_ORGANIZATION_GROUPS: OrganizationGroup[] = [
+  { id: 'group-1', tenantId: 'tenant-1', name: 'Diretoria', description: 'Grupo da diretoria executiva', isActive: true, createdAt: '2024-01-10T08:00:00Z', code: 'DIR' },
+  { id: 'group-2', tenantId: 'tenant-1', name: 'Gestores', description: 'Grupo de gestores operacionais', isActive: true, createdAt: '2024-01-10T08:00:00Z', code: 'GEST' },
+  { id: 'group-3', tenantId: 'tenant-1', name: 'Operacional', description: 'Grupo operacional geral', isActive: true, createdAt: '2024-01-10T08:00:00Z', code: 'OPER' },
 ]
 
 export const MOCK_ORGANIZATION_ROLES: OrganizationRole[] = [
@@ -416,6 +433,7 @@ export const INITIAL_MOCK_DB: MockDatabase = {
   organizationAreas: structuredClone(MOCK_ORGANIZATION_AREAS),
   organizationDisciplines: structuredClone(MOCK_ORGANIZATION_DISCIPLINES),
   organizationRoles: structuredClone(MOCK_ORGANIZATION_ROLES),
+  organizationGroups: structuredClone(MOCK_ORGANIZATION_GROUPS),
   documentInstances: structuredClone(MOCK_DOCUMENT_INSTANCES),
   tasks: structuredClone(MOCK_TASKS),
   workflows: structuredClone(MOCK_WORKFLOWS),
