@@ -1,4 +1,3 @@
-
 import { useEffect } from 'react'
 import {
   Alert,
@@ -19,46 +18,39 @@ import { MailOutlined } from '@ant-design/icons'
 
 import type { NotificationEventConfig, WorkflowElementConfig } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 
 const { Text, Title } = Typography
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type NotificationEventConfigPanelProps = {
   workflowId: string
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
-  onSave: (
-    values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>,
-  ) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = NotificationEventConfig
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const CHANNEL_OPTIONS = [
-  { label: 'E-mail',          value: 'email' },
+  { label: 'E-mail', value: 'email' },
   { label: 'Notificação app', value: 'in-app' },
-  { label: 'WhatsApp',        value: 'whatsapp' },
-  { label: 'SMS',             value: 'sms' },
+  { label: 'WhatsApp', value: 'whatsapp' },
+  { label: 'SMS', value: 'sms' },
   { label: 'Todos os canais', value: 'all' },
 ]
 
 const DEFAULT_CONFIG: FormValues = {
-  notificationTemplateId:  undefined,
-  channel:                 'email',
-  recipientRoleIds:        [],
-  recipientUserIds:        [],
-  recipientAreaIds:        [],
-  notifyInitiator:         false,
+  notificationTemplateId: undefined,
+  channel: 'email',
+  recipientRoleIds: [],
+  recipientUserIds: [],
+  recipientAreaIds: [],
+  notifyInitiator: false,
   notifyPreviousAssignees: false,
-  customSubject:           undefined,
-  customBody:              undefined,
-  contextVariables:        [],
+  customSubject: undefined,
+  customBody: undefined,
+  contextVariables: [],
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export function NotificationEventConfigPanel({
   workflowId,
@@ -71,27 +63,25 @@ export function NotificationEventConfigPanel({
   useEffect(() => {
     if (!selectedElement) return
 
-    // Lê config salva se o kind já é 'notification'
     const saved =
       initialConfig?.kind === 'notification'
         ? (initialConfig.config as NotificationEventConfig)
         : null
 
     form.setFieldsValue({
-      notificationTemplateId:  saved?.notificationTemplateId  ?? DEFAULT_CONFIG.notificationTemplateId,
-      channel:                 saved?.channel                 ?? DEFAULT_CONFIG.channel,
-      recipientRoleIds:        saved?.recipientRoleIds        ?? [],
-      recipientUserIds:        saved?.recipientUserIds        ?? [],
-      recipientAreaIds:        saved?.recipientAreaIds        ?? [],
-      notifyInitiator:         saved?.notifyInitiator         ?? false,
+      notificationTemplateId:
+        saved?.notificationTemplateId ?? DEFAULT_CONFIG.notificationTemplateId,
+      channel: saved?.channel ?? DEFAULT_CONFIG.channel,
+      recipientRoleIds: saved?.recipientRoleIds ?? [],
+      recipientUserIds: saved?.recipientUserIds ?? [],
+      recipientAreaIds: saved?.recipientAreaIds ?? [],
+      notifyInitiator: saved?.notifyInitiator ?? false,
       notifyPreviousAssignees: saved?.notifyPreviousAssignees ?? false,
-      customSubject:           saved?.customSubject,
-      customBody:              saved?.customBody,
-      contextVariables:        saved?.contextVariables        ?? [],
+      customSubject: saved?.customSubject,
+      customBody: saved?.customBody,
+      contextVariables: saved?.contextVariables ?? [],
     })
   }, [form, initialConfig, selectedElement])
-
-  // ── Guards ──────────────────────────────────────────────────────────────────
 
   if (!selectedElement) {
     return (
@@ -109,31 +99,27 @@ export function NotificationEventConfigPanel({
     )
   }
 
-  // ── Submit ──────────────────────────────────────────────────────────────────
-
   const handleSubmit = (values: FormValues) => {
     onSave({
       workflowId,
-      elementId:   selectedElement.id,
+      elementId: selectedElement.id,
       elementType: selectedElement.type,
       elementName: selectedElement.name,
-      kind: 'notification',  // ← kind correto, distinto de 'activity'
+      kind: 'notification',
       config: {
-        notificationTemplateId:  values.notificationTemplateId,
-        channel:                 values.channel,
-        recipientRoleIds:        values.recipientRoleIds        ?? [],
-        recipientUserIds:        values.recipientUserIds        ?? [],
-        recipientAreaIds:        values.recipientAreaIds        ?? [],
-        notifyInitiator:         values.notifyInitiator         ?? false,
+        notificationTemplateId: values.notificationTemplateId,
+        channel: values.channel,
+        recipientRoleIds: values.recipientRoleIds ?? [],
+        recipientUserIds: values.recipientUserIds ?? [],
+        recipientAreaIds: values.recipientAreaIds ?? [],
+        notifyInitiator: values.notifyInitiator ?? false,
         notifyPreviousAssignees: values.notifyPreviousAssignees ?? false,
-        customSubject:           values.customSubject,
-        customBody:              values.customBody,
-        contextVariables:        values.contextVariables        ?? [],
+        customSubject: values.customSubject,
+        customBody: values.customBody,
+        contextVariables: values.contextVariables ?? [],
       } satisfies NotificationEventConfig,
     })
   }
-
-  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <Card
@@ -141,7 +127,6 @@ export function NotificationEventConfigPanel({
       style={{ borderRadius: 18 }}
       title="Configuração de notificação"
     >
-      {/* Alerta diferencia claramente de uma atividade */}
       <Alert
         type="info"
         showIcon
@@ -157,17 +142,22 @@ export function NotificationEventConfigPanel({
       />
 
       <Form<FormValues> form={form} layout="vertical" onFinish={handleSubmit}>
-
-        {/* ── Template ────────────────────────────────────────────── */}
         <Space style={{ marginBottom: 8 }}>
           <MailOutlined style={{ color: '#1677ff', fontSize: 16 }} />
-          <Title level={5} style={{ margin: 0 }}>Template de notificação</Title>
+          <Title level={5} style={{ margin: 0 }}>
+            Template de notificação
+          </Title>
         </Space>
 
         <Form.Item
           label="Template"
           name="notificationTemplateId"
-          rules={[{ required: true, message: 'Informe o template de notificação' }]}
+          rules={[
+            {
+              required: true,
+              message: 'Informe o template de notificação',
+            },
+          ]}
         >
           <Select
             showSearch
@@ -185,13 +175,17 @@ export function NotificationEventConfigPanel({
 
         <Divider />
 
-        {/* ── Destinatários ───────────────────────────────────────── */}
-        <Title level={5} style={{ marginBottom: 12 }}>Destinatários</Title>
+        <Title level={5} style={{ marginBottom: 12 }}>
+          Destinatários
+        </Title>
 
         <Row gutter={[12, 0]}>
           <Col xs={24}>
             <Form.Item label="Cargos / perfis" name="recipientRoleIds">
-              <Select mode="tags" placeholder="Ex.: aprovador, gestor, qualidade" />
+              <Select
+                mode="tags"
+                placeholder="Ex.: aprovador, gestor, qualidade"
+              />
             </Form.Item>
           </Col>
           <Col xs={24}>
@@ -201,19 +195,35 @@ export function NotificationEventConfigPanel({
           </Col>
           <Col xs={24}>
             <Form.Item label="Áreas / departamentos" name="recipientAreaIds">
-              <Select mode="tags" placeholder="Ex.: qualidade, engenharia, TI" />
+              <Select
+                mode="tags"
+                placeholder="Ex.: qualidade, engenharia, TI"
+              />
             </Form.Item>
           </Col>
         </Row>
 
-        <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }} size={8}>
-          <Form.Item name="notifyInitiator" valuePropName="checked" style={{ marginBottom: 0 }}>
+        <Space
+          direction="vertical"
+          style={{ width: '100%', marginBottom: 16 }}
+          size={8}
+        >
+          <Form.Item
+            name="notifyInitiator"
+            valuePropName="checked"
+            style={{ marginBottom: 0 }}
+          >
             <Switch
               checkedChildren="Notificar iniciador do processo"
               unCheckedChildren="Não notificar iniciador"
             />
           </Form.Item>
-          <Form.Item name="notifyPreviousAssignees" valuePropName="checked" style={{ marginBottom: 0 }}>
+
+          <Form.Item
+            name="notifyPreviousAssignees"
+            valuePropName="checked"
+            style={{ marginBottom: 0 }}
+          >
             <Switch
               checkedChildren="Notificar responsáveis da etapa anterior"
               unCheckedChildren="Não notificar etapa anterior"
@@ -223,10 +233,12 @@ export function NotificationEventConfigPanel({
 
         <Divider />
 
-        {/* ── Conteúdo personalizado ──────────────────────────────── */}
         <Title level={5} style={{ marginBottom: 4 }}>
           Conteúdo personalizado
-          <Text type="secondary" style={{ fontSize: 12, fontWeight: 400, marginLeft: 8 }}>
+          <Text
+            type="secondary"
+            style={{ fontSize: 12, fontWeight: 400, marginLeft: 8 }}
+          >
             (opcional — sobrescreve o template)
           </Text>
         </Title>

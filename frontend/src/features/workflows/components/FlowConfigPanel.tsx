@@ -14,14 +14,13 @@ import type {
   WorkflowElementConfig,
 } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 
 type FlowConfigPanelProps = {
   workflowId: string
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
-  onSave: (
-    values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>
-  ) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = FlowConfig

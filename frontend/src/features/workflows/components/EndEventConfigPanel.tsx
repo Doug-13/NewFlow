@@ -13,14 +13,13 @@ import type {
   WorkflowElementConfig,
 } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 
 type EndEventConfigPanelProps = {
   workflowId: string
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
-  onSave: (
-    values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>
-  ) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = EndEventConfig
@@ -82,7 +81,7 @@ export function EndEventConfigPanel({
         finalAction: values.finalAction,
         linkedWorkflowId: values.linkedWorkflowId,
         instructions: values.instructions,
-      },
+      } satisfies EndEventConfig,
     })
   }
 
@@ -134,7 +133,10 @@ export function EndEventConfigPanel({
               { label: 'Concluir', value: 'complete' },
               { label: 'Arquivar', value: 'archive' },
               { label: 'Publicar', value: 'publish' },
-              { label: 'Abrir workflow vinculado', value: 'open-linked-workflow' },
+              {
+                label: 'Abrir workflow vinculado',
+                value: 'open-linked-workflow',
+              },
             ]}
           />
         </Form.Item>
