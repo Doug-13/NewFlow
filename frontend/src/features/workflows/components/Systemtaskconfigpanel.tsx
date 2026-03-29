@@ -25,6 +25,7 @@ import type {
   WorkflowElementConfig,
 } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 
 const { Text } = Typography
 
@@ -32,9 +33,7 @@ type SystemTaskConfigPanelProps = {
   workflowId: string
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
-  onSave: (
-    values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>,
-  ) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = SystemTaskConfig
@@ -261,7 +260,8 @@ export function SystemTaskConfigPanel({
                           </Text>
                           <Text type="secondary" style={{ fontSize: 11 }}>
                             Os parâmetros específicos (campo, formato, valor, URL)
-                            são configurados no <strong>processo / tipo documental</strong>.
+                            são configurados no{' '}
+                            <strong>processo / tipo documental</strong>.
                           </Text>
                         </Space>
                       }

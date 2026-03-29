@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Button,
@@ -31,7 +31,9 @@ import {
   EMPTY_WORKFLOW_PERMISSIONS,
 } from '../../features/workflows/storage'
 import { getUsers } from '../../api/users'
-import { getUnits, getAreas, getDisciplines, getOrgRoles, getOrgGroups } from '../../api/organization'
+import { getAreas, getDisciplines, getOrgRoles, getOrgGroups } from '../../api/organization'
+import { useAuthStore } from '../../store/authStore'
+// import { useAuthStore } from '../../store/authStore'
 
 const { Title, Text } = Typography
 
@@ -42,12 +44,11 @@ export function PermissionSection({
   value: WorkflowPermissions
   onChange: (v: WorkflowPermissions) => void
 }) {
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
-  const { data: groups = [] } = useQuery({ queryKey: ['org-groups'], queryFn: getOrgGroups })
-  const { data: units = [] } = useQuery({ queryKey: ['org-units'], queryFn: getUnits })
-  const { data: areas = [] } = useQuery({ queryKey: ['org-areas'], queryFn: getAreas })
+  const { data: users = [] }       = useQuery({ queryKey: ['users'],           queryFn: getUsers })
+  const { data: groups = [] }      = useQuery({ queryKey: ['org-groups'],      queryFn: getOrgGroups })
+  const { data: areas = [] }       = useQuery({ queryKey: ['org-areas'],       queryFn: getAreas })
   const { data: disciplines = [] } = useQuery({ queryKey: ['org-disciplines'], queryFn: getDisciplines })
-  const { data: roles = [] } = useQuery({ queryKey: ['org-roles'], queryFn: getOrgRoles })
+  const { data: roles = [] }       = useQuery({ queryKey: ['org-roles'],       queryFn: getOrgRoles })
 
   const update = (section: 'visualization' | 'creation', field: string, val: string[]) => {
     onChange({ ...value, [section]: { ...value[section], [field]: val } })
@@ -59,100 +60,27 @@ export function PermissionSection({
     label: string,
     color: string,
   ) => (
-    <Card
-      size="small"
-      title={<Space>{icon}<span style={{ color }}>{label}</span></Space>}
-      style={{ marginBottom: 16, borderRadius: 12 }}
-    >
+    <Card size="small" title={<Space>{icon}<span style={{ color }}>{label}</span></Space>} style={{ marginBottom: 16, borderRadius: 12 }}>
       <Row gutter={[12, 12]}>
         <Col xs={24} md={12}>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Usuários</div>
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            placeholder="Todos os usuários"
-            value={value[key].userIds}
-            onChange={(v) => update(key, 'userIds', v)}
-            options={users.map((u: any) => ({ label: u.name, value: u.id }))}
-            optionFilterProp="label"
-            showSearch
-            allowClear
-          />
+          <Select mode="multiple" style={{ width: '100%' }} placeholder="Todos os usuários" value={value[key].userIds} onChange={(v) => update(key, 'userIds', v)} options={users.map((u: any) => ({ label: u.name, value: u.id }))} optionFilterProp="label" showSearch allowClear />
         </Col>
-
         <Col xs={24} md={12}>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Grupos</div>
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            placeholder="Todos os grupos"
-            value={value[key].groupIds}
-            onChange={(v) => update(key, 'groupIds', v)}
-            options={groups.map((g: any) => ({ label: g.name, value: g.id }))}
-            optionFilterProp="label"
-            showSearch
-            allowClear
-          />
+          <Select mode="multiple" style={{ width: '100%' }} placeholder="Todos os grupos" value={value[key].groupIds} onChange={(v) => update(key, 'groupIds', v)} options={groups.map((g: any) => ({ label: g.name, value: g.id }))} optionFilterProp="label" showSearch allowClear />
         </Col>
-
-        <Col xs={24} md={8}>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Unidades</div>
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            placeholder="Todas as unidades"
-            value={value[key].unitIds}
-            onChange={(v) => update(key, 'unitIds', v)}
-            options={units.map((u: any) => ({ label: u.name, value: u.id }))}
-            optionFilterProp="label"
-            showSearch
-            allowClear
-          />
-        </Col>
-
         <Col xs={24} md={8}>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Áreas</div>
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            placeholder="Todas as áreas"
-            value={value[key].areaIds}
-            onChange={(v) => update(key, 'areaIds', v)}
-            options={areas.map((a: any) => ({ label: a.name, value: a.id }))}
-            optionFilterProp="label"
-            showSearch
-            allowClear
-          />
+          <Select mode="multiple" style={{ width: '100%' }} placeholder="Todas as áreas" value={value[key].areaIds} onChange={(v) => update(key, 'areaIds', v)} options={areas.map((a: any) => ({ label: a.name, value: a.id }))} optionFilterProp="label" showSearch allowClear />
         </Col>
-
         <Col xs={24} md={8}>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Disciplinas</div>
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            placeholder="Todas as disciplinas"
-            value={value[key].disciplineIds}
-            onChange={(v) => update(key, 'disciplineIds', v)}
-            options={disciplines.map((d: any) => ({ label: d.name, value: d.id }))}
-            optionFilterProp="label"
-            showSearch
-            allowClear
-          />
+          <Select mode="multiple" style={{ width: '100%' }} placeholder="Todas as disciplinas" value={value[key].disciplineIds} onChange={(v) => update(key, 'disciplineIds', v)} options={disciplines.map((d: any) => ({ label: d.name, value: d.id }))} optionFilterProp="label" showSearch allowClear />
         </Col>
-
-        <Col xs={24} md={12}>
+        <Col xs={24} md={8}>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Funções</div>
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            placeholder="Todas as funções"
-            value={value[key].roleIds}
-            onChange={(v) => update(key, 'roleIds', v)}
-            options={roles.map((r: any) => ({ label: r.name, value: r.id }))}
-            optionFilterProp="label"
-            showSearch
-            allowClear
-          />
+          <Select mode="multiple" style={{ width: '100%' }} placeholder="Todas as funções" value={value[key].roleIds} onChange={(v) => update(key, 'roleIds', v)} options={roles.map((r: any) => ({ label: r.name, value: r.id }))} optionFilterProp="label" showSearch allowClear />
         </Col>
       </Row>
     </Card>
@@ -181,28 +109,38 @@ type WorkflowNewFormValues = {
 }
 
 const STATUS_OPTIONS: Array<{ label: string; value: WorkflowStatus }> = [
-  { label: 'Rascunho', value: 'draft' },
-  { label: 'Ativo', value: 'active' },
-  { label: 'Inativo', value: 'inactive' },
+  { label: 'Rascunho',  value: 'draft' },
+  { label: 'Ativo',     value: 'active' },
+  { label: 'Inativo',   value: 'inactive' },
   { label: 'Arquivado', value: 'archived' },
 ]
 
-export function WorkflowNewPage({
-  embedded = false,
-  onCancel,
-  onSaved,
-}: WorkflowNewPageProps) {
+export function WorkflowNewPage({ embedded = false, onCancel, onSaved }: WorkflowNewPageProps) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [form] = Form.useForm<WorkflowNewFormValues>()
   const [permissions, setPermissions] = useState<WorkflowPermissions>(EMPTY_WORKFLOW_PERMISSIONS)
 
+  // processId vem da query string quando criamos workflow a partir de um processo
+  // Ex.: /workflows/new?processId=proc-1
+  const processId = searchParams.get('processId') ?? undefined
+
+  // Para onde voltar quando cancelar ou após salvar
+  const backPath = processId ? `/processes/${processId}` : '/workflows'
+
+  // accountId obrigatório pelo createWorkflowDraft
+  const user = useAuthStore((s) => s.user)
+  const accountId = (user as any)?.accountId ?? (user as any)?.tenantId ?? ''
+
   const handleSubmit = (values: WorkflowNewFormValues) => {
     const workflow = createWorkflowDraft({
+      accountId,
       name: values.name,
       description: values.description,
       version: values.version,
       status: values.status,
       documentTypeName: values.documentTypeName,
+      processId,
     })
 
     upsertWorkflow({ ...workflow, permissions })
@@ -213,146 +151,100 @@ export function WorkflowNewPage({
       return
     }
 
-    navigate(`/workflows/${workflow.id}/studio`)
+    // Abre o Studio passando o processId para que o botão Voltar do Studio
+    // também saiba para onde retornar
+    const studioPath = processId
+      ? `/workflows/${workflow.id}/studio?processId=${processId}`
+      : `/workflows/${workflow.id}/studio`
+
+    navigate(studioPath)
   }
 
   return (
-    <div
-      style={{
-        padding: embedded ? 0 : 24,
-        background: embedded ? 'transparent' : '#f5f7fb',
-        minHeight: embedded ? 'auto' : '100vh',
-      }}
-    >
+    <div style={{ padding: embedded ? 0 : 24, background: embedded ? 'transparent' : '#f5f7fb', minHeight: embedded ? 'auto' : '100vh' }}>
       <Space style={{ marginBottom: 20 }}>
-        <Button
-          icon={<ArrowLeftOutlined />}
-          onClick={() => {
-            if (embedded) {
-              onCancel?.()
-              return
-            }
-
-            navigate('/workflows')
-          }}
-        >
+        <Button icon={<ArrowLeftOutlined />} onClick={() => { if (embedded) { onCancel?.(); return } navigate(backPath) }}>
           Voltar
         </Button>
-
         <div>
-          <Title level={3} style={{ margin: 0 }}>
-            Novo Workflow
-          </Title>
-          <Text type="secondary">
-            Crie o rascunho do fluxo e siga para o Workflow Studio.
-          </Text>
+          <Title level={3} style={{ margin: 0 }}>Novo Workflow</Title>
+          <Text type="secondary">Crie o rascunho do fluxo e siga para o Workflow Studio.</Text>
         </div>
       </Space>
 
       <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16, borderRadius: 16 }}
+        type="info" showIcon style={{ marginBottom: 16, borderRadius: 16 }}
         message="Novo fluxo em modo BPMN-first"
         description="Nesta etapa você cria apenas os dados principais. O desenho das etapas, conexões, gateways, eventos e configurações operacionais será feito no Workflow Studio."
       />
 
-      <Tabs
-        items={[
-          {
-            key: 'general',
-            label: <Space><BranchesOutlined />Dados do fluxo</Space>,
-            children: (
-              <Form
-                form={form}
-                layout="vertical"
-                initialValues={{ version: '1.0', status: 'draft' }}
-                onFinish={handleSubmit}
-              >
-                <Card bordered={false} style={{ borderRadius: 20 }} title="Dados gerais do workflow">
-                  <Row gutter={16}>
-                    <Col xs={24} md={12}>
-                      <Form.Item
-                        label="Nome do workflow"
-                        name="name"
-                        rules={[{ required: true, message: 'Informe o nome do workflow' }]}
-                      >
-                        <Input placeholder="Ex.: Fluxo de Aprovação de Contratos" />
-                      </Form.Item>
-                    </Col>
+      <Tabs items={[
+        {
+          key: 'general',
+          label: <Space><BranchesOutlined />Dados do fluxo</Space>,
+          children: (
+            <Form form={form} layout="vertical" initialValues={{ version: '1.0', status: 'draft' }} onFinish={handleSubmit}>
+              <Card bordered={false} style={{ borderRadius: 20 }} title="Dados gerais do workflow">
+                <Row gutter={16}>
+                  <Col xs={24} md={12}>
+                    <Form.Item label="Nome do workflow" name="name" rules={[{ required: true, message: 'Informe o nome do workflow' }]}>
+                      <Input placeholder="Ex.: Fluxo de Aprovação de Contratos" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <Form.Item label="Versão" name="version">
+                      <Input placeholder="Ex.: 1.0" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <Form.Item label="Status" name="status">
+                      <Select options={STATUS_OPTIONS} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12}>
+                    <Form.Item label="Tipo documental" name="documentTypeName">
+                      <Input placeholder="Ex.: Contratos" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12}>
+                    <Form.Item label="Descrição" name="description">
+                      <Input.TextArea rows={3} placeholder="Descreva o objetivo deste workflow" />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-                    <Col xs={24} md={6}>
-                      <Form.Item label="Versão" name="version">
-                        <Input placeholder="Ex.: 1.0" />
-                      </Form.Item>
-                    </Col>
-
-                    <Col xs={24} md={6}>
-                      <Form.Item label="Status" name="status">
-                        <Select options={STATUS_OPTIONS} />
-                      </Form.Item>
-                    </Col>
-
-                    <Col xs={24} md={12}>
-                      <Form.Item label="Tipo documental" name="documentTypeName">
-                        <Input placeholder="Ex.: Contratos" />
-                      </Form.Item>
-                    </Col>
-
-                    <Col xs={24} md={12}>
-                      <Form.Item label="Descrição" name="description">
-                        <Input.TextArea rows={3} placeholder="Descreva o objetivo deste workflow" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-
-                  <Space style={{ marginTop: 8 }}>
-                    <Button type="primary" htmlType="submit" icon={<FileAddOutlined />}>
-                      Criar e abrir no Studio
-                    </Button>
-
-                    <Button
-                      onClick={() => {
-                        if (embedded) {
-                          onCancel?.()
-                          return
-                        }
-
-                        navigate('/workflows')
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                  </Space>
-                </Card>
-
-                <Card bordered={false} style={{ borderRadius: 20, marginTop: 16 }}>
-                  <Space align="start">
-                    <BranchesOutlined style={{ color: '#1677ff', fontSize: 18, marginTop: 2 }} />
-                    <div>
-                      <Text strong>Fluxo recomendado</Text>
-                      <div>
-                        <Text type="secondary">
-                          Criar rascunho → modelar no Studio → validar → publicar.
-                        </Text>
-                      </div>
-                    </div>
-                  </Space>
-                </Card>
-              </Form>
-            ),
-          },
-          {
-            key: 'permissions',
-            label: <Space><SafetyOutlined />Permissões</Space>,
-            children: (
-              <Card bordered={false} style={{ borderRadius: 20 }}>
-                <PermissionSection value={permissions} onChange={setPermissions} />
+                <Space style={{ marginTop: 8 }}>
+                  <Button type="primary" htmlType="submit" icon={<FileAddOutlined />}>
+                    Criar e abrir no Studio
+                  </Button>
+                  <Button onClick={() => { if (embedded) { onCancel?.(); return } navigate(backPath) }}>
+                    Cancelar
+                  </Button>
+                </Space>
               </Card>
-            ),
-          },
-        ]}
-      />
+
+              <Card bordered={false} style={{ borderRadius: 20, marginTop: 16 }}>
+                <Space align="start">
+                  <BranchesOutlined style={{ color: '#1677ff', fontSize: 18, marginTop: 2 }} />
+                  <div>
+                    <Text strong>Fluxo recomendado</Text>
+                    <div><Text type="secondary">Criar rascunho → modelar no Studio → validar → publicar.</Text></div>
+                  </div>
+                </Space>
+              </Card>
+            </Form>
+          ),
+        },
+        {
+          key: 'permissions',
+          label: <Space><SafetyOutlined />Permissões</Space>,
+          children: (
+            <Card bordered={false} style={{ borderRadius: 20 }}>
+              <PermissionSection value={permissions} onChange={setPermissions} />
+            </Card>
+          ),
+        },
+      ]} />
     </div>
   )
 }

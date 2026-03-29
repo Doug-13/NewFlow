@@ -21,6 +21,7 @@ import type {
   WorkflowElementConfig,
 } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 import {
   findUpstreamActivityId,
   getOutgoingFlows,
@@ -48,7 +49,7 @@ type GatewayConfigPanelProps = {
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
   elementConfigs: WorkflowElementConfig[]
-  onSave: (values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = {
@@ -72,56 +73,15 @@ function flowLabel(flow: BpmnEdge, targetName?: string): string {
   return flow.targetRef
 }
 
-/**
- * Extrai as ações da atividade upstream.
- * Prioriza `actions[]` (novo campo dinâmico).
- * Faz fallback para os booleans legados se `actions` não existir.
- */
 function resolveActions(cfg: ActivityConfig): ActivityAction[] {
-  // Novo campo dinâmico
   const dynamic = (cfg as any).actions as ActivityAction[] | undefined
   if (dynamic && dynamic.length > 0) return dynamic
 
-  // Fallback: booleans legados → gera ações representativas
   const fallback: ActivityAction[] = []
-
-  if (cfg.allowApprove) {
-    fallback.push({
-      id: 'legacy-approve',
-      label: 'Aprovar',
-      color: 'green',
-      outcome: 'approve',
-      requiresComment: false,
-    })
-  }
-  if (cfg.allowReject) {
-    fallback.push({
-      id: 'legacy-reject',
-      label: 'Reprovar',
-      color: 'red',
-      outcome: 'reject',
-      requiresComment: true,
-    })
-  }
-  if (cfg.allowRequestChanges) {
-    fallback.push({
-      id: 'legacy-request-changes',
-      label: 'Solicitar revisão',
-      color: 'orange',
-      outcome: 'request-changes',
-      requiresComment: true,
-    })
-  }
-  if (cfg.allowForward) {
-    fallback.push({
-      id: 'legacy-forward',
-      label: 'Encaminhar',
-      color: 'blue',
-      outcome: 'forward',
-      requiresComment: false,
-    })
-  }
-
+  if (cfg.allowApprove)        fallback.push({ id: 'legacy-approve',          label: 'Aprovar',          color: 'green',  outcome: 'approve',          requiresComment: false })
+  if (cfg.allowReject)         fallback.push({ id: 'legacy-reject',           label: 'Reprovar',         color: 'red',    outcome: 'reject',           requiresComment: true  })
+  if (cfg.allowRequestChanges) fallback.push({ id: 'legacy-request-changes',  label: 'Solicitar revisão',color: 'orange', outcome: 'request-changes',  requiresComment: true  })
+  if (cfg.allowForward)        fallback.push({ id: 'legacy-forward',          label: 'Encaminhar',       color: 'blue',   outcome: 'forward',          requiresComment: false })
   return fallback
 }
 
@@ -139,30 +99,24 @@ export function GatewayConfigPanel({
 
   const graph = useMemo(() => parseBpmnGraph(bpmnXml), [bpmnXml])
 
-  // Busca a config da atividade upstream
   const upstreamActivity = useMemo<ActivityConfig | null>(() => {
     if (!selectedElement) return null
     const upstreamId = findUpstreamActivityId(graph, selectedElement.id)
     if (!upstreamId) return null
-    const cfg = elementConfigs.find(
-      (c) => c.elementId === upstreamId && c.kind === 'activity',
-    )
+    const cfg = elementConfigs.find((c) => c.elementId === upstreamId && c.kind === 'activity')
     return cfg ? (cfg.config as ActivityConfig) : null
   }, [graph, selectedElement, elementConfigs])
 
-  // Ações: dinâmicas se disponíveis, booleans como fallback
   const actions = useMemo<ActivityAction[]>(
     () => (upstreamActivity ? resolveActions(upstreamActivity) : []),
     [upstreamActivity],
   )
 
-  // Fluxos de saída do gateway
   const outgoingFlows = useMemo<BpmnEdge[]>(() => {
     if (!selectedElement) return []
     return getOutgoingFlows(graph, selectedElement.id)
   }, [graph, selectedElement])
 
-  // Opções para os selects de roteamento
   const flowOptions = useMemo(() =>
     outgoingFlows.map((flow) => {
       const targetNode = graph.nodes.find((n) => n.id === flow.targetRef)
@@ -178,7 +132,6 @@ export function GatewayConfigPanel({
     [outgoingFlows, graph.nodes, elementConfigs],
   )
 
-  // Restaura valores salvos
   useEffect(() => {
     if (!selectedElement) return
 
@@ -204,16 +157,12 @@ export function GatewayConfigPanel({
     })
   }, [form, initialConfig, selectedElement])
 
-  // ── Guards ──────────────────────────────────────────────────────────────────
-
   if (!selectedElement) {
     return <Card variant="borderless" style={{ borderRadius: 18 }}><Empty description="Selecione um gateway" /></Card>
   }
   if (selectedElement.kind !== 'gateway') {
     return <Card variant="borderless" style={{ borderRadius: 18 }}><Empty description="Selecione um gateway" /></Card>
   }
-
-  // ── Submit ──────────────────────────────────────────────────────────────────
 
   const handleSubmit = (values: FormValues) => {
     const actionRoutes: ActionRoute[] = actions.map((action) => ({
@@ -240,8 +189,6 @@ export function GatewayConfigPanel({
       config,
     })
   }
-
-  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <Card variant="borderless" style={{ borderRadius: 18 }} title="Configuração do gateway">
@@ -283,31 +230,22 @@ export function GatewayConfigPanel({
           <Input.TextArea rows={3} placeholder="Explique como essa decisão deve ser interpretada" />
         </Form.Item>
 
-        {/* ── Roteamento por ação ─────────────────────────────── */}
         {actions.length > 0 && (
           <>
             <Divider />
-
             <Space style={{ marginBottom: 12 }}>
               <BranchesOutlined style={{ color: '#1677ff', fontSize: 16 }} />
-              <Title level={5} style={{ margin: 0 }}>
-                Roteamento por ação
-              </Title>
+              <Title level={5} style={{ margin: 0 }}>Roteamento por ação</Title>
             </Space>
 
             <Alert
-              type="success"
-              showIcon
-              style={{ marginBottom: 16 }}
+              type="success" showIcon style={{ marginBottom: 16 }}
               title={`${actions.length} ação(ões) configurada(s) na atividade anterior`}
               description="Defina para qual caminho de saída cada ação deve encaminhar o processo."
             />
 
             {outgoingFlows.length === 0 && (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 16 }}
+              <Alert type="warning" showIcon style={{ marginBottom: 16 }}
                 title="Sem caminhos de saída"
                 description="Conecte este gateway a outros elementos no diagrama para que os caminhos apareçam aqui."
               />
@@ -328,11 +266,7 @@ export function GatewayConfigPanel({
                 <Select
                   allowClear
                   disabled={outgoingFlows.length === 0}
-                  placeholder={
-                    outgoingFlows.length === 0
-                      ? 'Nenhum caminho disponível'
-                      : 'Selecione o caminho de saída'
-                  }
+                  placeholder={outgoingFlows.length === 0 ? 'Nenhum caminho disponível' : 'Selecione o caminho de saída'}
                   options={flowOptions}
                 />
               </Form.Item>
@@ -343,9 +277,7 @@ export function GatewayConfigPanel({
         {upstreamActivity === null && (
           <>
             <Divider />
-            <Alert
-              type="info"
-              showIcon
+            <Alert type="info" showIcon
               title="Atividade anterior não configurada"
               description="Configure a atividade que precede este gateway para que o roteamento por ação apareça aqui."
             />
@@ -355,9 +287,7 @@ export function GatewayConfigPanel({
         {upstreamActivity !== null && actions.length === 0 && (
           <>
             <Divider />
-            <Alert
-              type="warning"
-              showIcon
+            <Alert type="warning" showIcon
               title="Nenhuma ação cadastrada na atividade anterior"
               description="Adicione ações na atividade que precede este gateway para configurar o roteamento."
             />

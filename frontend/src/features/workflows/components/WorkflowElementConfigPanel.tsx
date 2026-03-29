@@ -1,6 +1,6 @@
 import { Card, Empty, Typography } from 'antd'
 
-import type { WorkflowActivityConfig, WorkflowElementConfig } from '../storage'
+import type { WorkflowActivityConfig, WorkflowElementConfig, WorkflowScopedBase } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
 
 import { ActivityConfigPanel } from './ActivityConfigPanel'
@@ -20,6 +20,12 @@ type WorkflowElementConfigPanelProps = {
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
   elementConfigs: WorkflowElementConfig[]
+  /**
+   * Contexto de escopo do workflow pai.
+   * Necessário porque WorkflowElementConfig extende WorkflowScopedBase
+   * e exige accountId + scopeLevel em todos os saves.
+   */
+  scopeContext: Pick<WorkflowScopedBase, 'accountId' | 'scopeLevel' | 'accountName' | 'processId' | 'processName' | 'tenantId'>
   onSave: (
     values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>,
   ) => void
@@ -34,20 +40,21 @@ function toActivityConfig(cfg: WorkflowElementConfig): WorkflowActivityConfig {
     elementName: cfg.elementName,
     createdAt: cfg.createdAt,
     updatedAt: cfg.updatedAt,
+    // Propaga scope
+    accountId: cfg.accountId,
+    accountName: cfg.accountName,
+    scopeLevel: cfg.scopeLevel,
+    processId: cfg.processId,
+    processName: cfg.processName,
+    tenantId: cfg.tenantId,
     ...(cfg.config as object),
   } as WorkflowActivityConfig
 }
 
-function resolveActivityPanel(
-  elementType: string,
-): 'subprocess' | 'default' {
-  if (
-    elementType === 'bpmn:SubProcess' ||
-    elementType === 'bpmn:CallActivity'
-  ) {
+function resolveActivityPanel(elementType: string): 'subprocess' | 'default' {
+  if (elementType === 'bpmn:SubProcess' || elementType === 'bpmn:CallActivity') {
     return 'subprocess'
   }
-
   return 'default'
 }
 
@@ -57,18 +64,37 @@ export function WorkflowElementConfigPanel({
   selectedElement,
   initialConfig,
   elementConfigs,
+  scopeContext,
   onSave,
 }: WorkflowElementConfigPanelProps) {
+
+  /**
+   * Wrapper que injeta os campos de scope obrigatórios antes de repassar
+   * para o onSave do WorkflowStudioPage.
+   *
+   * Aceita um objeto parcial (sem accountId/scopeLevel) porque esses campos
+   * são adicionados aqui — os painéis filhos não precisam conhecê-los.
+   */
+  const onSaveWithScope = (
+    values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt' | 'accountId' | 'scopeLevel' | 'accountName' | 'processId' | 'processName' | 'tenantId'>
+      & Partial<Pick<WorkflowElementConfig, 'accountId' | 'scopeLevel' | 'accountName' | 'processId' | 'processName' | 'tenantId'>>,
+  ) => {
+    onSave({
+      // scope injetado — pode ser sobrescrito por valores vindos do filho
+      accountId:   scopeContext.accountId,
+      accountName: scopeContext.accountName,
+      scopeLevel:  scopeContext.scopeLevel,
+      processId:   scopeContext.processId   ?? null,
+      processName: scopeContext.processName ?? null,
+      tenantId:    scopeContext.tenantId    ?? scopeContext.accountId,
+      ...values,
+    } as Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>)
+  }
+
   if (!selectedElement) {
     return (
       <Card variant="borderless" style={{ borderRadius: 18 }}>
-        <Empty
-          description={
-            <Text type="secondary">
-              Clique em um elemento do diagrama para configurá-lo
-            </Text>
-          }
-        />
+        <Empty description={<Text type="secondary">Clique em um elemento do diagrama para configurá-lo</Text>} />
       </Card>
     )
   }
@@ -76,13 +102,7 @@ export function WorkflowElementConfigPanel({
   if (!selectedElement.isConfigurable) {
     return (
       <Card variant="borderless" style={{ borderRadius: 18 }}>
-        <Empty
-          description={
-            <Text type="secondary">
-              Este tipo de elemento não possui configuração
-            </Text>
-          }
-        />
+        <Empty description={<Text type="secondary">Este tipo de elemento não possui configuração</Text>} />
       </Card>
     )
   }
@@ -94,7 +114,7 @@ export function WorkflowElementConfigPanel({
           workflowId={workflowId}
           selectedElement={selectedElement}
           initialConfig={initialConfig}
-          onSave={onSave}
+          onSave={onSaveWithScope}
         />
       )
 
@@ -104,7 +124,7 @@ export function WorkflowElementConfigPanel({
           workflowId={workflowId}
           selectedElement={selectedElement}
           initialConfig={initialConfig}
-          onSave={onSave}
+          onSave={onSaveWithScope}
         />
       )
 
@@ -114,7 +134,7 @@ export function WorkflowElementConfigPanel({
           workflowId={workflowId}
           selectedElement={selectedElement}
           initialConfig={initialConfig}
-          onSave={onSave}
+          onSave={onSaveWithScope}
         />
       )
 
@@ -130,9 +150,9 @@ export function WorkflowElementConfigPanel({
             selectedElement={selectedElement}
             initialConfig={activityConfig}
             onSave={(values) => {
-              onSave({
+              onSaveWithScope({
                 workflowId,
-                elementId: selectedElement.id,
+                elementId:   selectedElement.id,
                 elementType: selectedElement.type,
                 elementName: selectedElement.name,
                 kind: 'activity',
@@ -146,12 +166,13 @@ export function WorkflowElementConfigPanel({
       return (
         <ActivityConfigPanel
           workflowId={workflowId}
+          scopeContext={scopeContext}
           selectedElement={selectedElement}
           initialConfig={activityConfig}
           onSave={(activityValues) => {
-            onSave({
+            onSaveWithScope({
               workflowId,
-              elementId: selectedElement.id,
+              elementId:   selectedElement.id,
               elementType: selectedElement.type,
               elementName: selectedElement.name,
               kind: 'activity',
@@ -170,7 +191,7 @@ export function WorkflowElementConfigPanel({
           selectedElement={selectedElement}
           initialConfig={initialConfig}
           elementConfigs={elementConfigs}
-          onSave={onSave}
+          onSave={onSaveWithScope}
         />
       )
 
@@ -180,7 +201,7 @@ export function WorkflowElementConfigPanel({
           workflowId={workflowId}
           selectedElement={selectedElement}
           initialConfig={initialConfig}
-          onSave={onSave}
+          onSave={onSaveWithScope}
         />
       )
 
@@ -190,7 +211,7 @@ export function WorkflowElementConfigPanel({
           workflowId={workflowId}
           selectedElement={selectedElement}
           initialConfig={initialConfig}
-          onSave={onSave}
+          onSave={onSaveWithScope}
         />
       )
 

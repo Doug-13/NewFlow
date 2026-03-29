@@ -14,6 +14,7 @@ import type {
   WorkflowElementConfig,
 } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 
 const { Text } = Typography
 
@@ -21,7 +22,7 @@ type StartEventConfigPanelProps = {
   workflowId: string
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
-  onSave: (values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = StartEventConfig
@@ -107,40 +108,28 @@ export function StartEventConfigPanel({
           label="Metadados obrigatórios na abertura"
           name="initialMetadataDefinitionIds"
         >
-          <Select
-            mode="tags"
-            placeholder="Ex.: titulo, codigo, solicitante"
-          />
+          <Select mode="tags" placeholder="Ex.: titulo, codigo, solicitante" />
         </Form.Item>
 
         <Form.Item
           label="Tipos de anexo obrigatórios"
           name="requiredAttachmentTypes"
         >
-          <Select
-            mode="tags"
-            placeholder="Ex.: pdf, imagem, contrato-base"
-          />
+          <Select mode="tags" placeholder="Ex.: pdf, imagem, contrato-base" />
         </Form.Item>
 
         <Form.Item
           label="Perfis que podem iniciar"
           name="allowedStarterRoleIds"
         >
-          <Select
-            mode="tags"
-            placeholder="Ex.: solicitante, gestor, qualidade"
-          />
+          <Select mode="tags" placeholder="Ex.: solicitante, gestor, qualidade" />
         </Form.Item>
 
         <Form.Item
           label="Templates de notificação"
           name="notificationTemplateIds"
         >
-          <Select
-            mode="tags"
-            placeholder="Ex.: notif-abertura, notif-confirmacao"
-          />
+          <Select mode="tags" placeholder="Ex.: notif-abertura, notif-confirmacao" />
         </Form.Item>
 
         <Form.Item label="Instruções iniciais" name="instructions">

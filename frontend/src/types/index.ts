@@ -3,8 +3,12 @@ export interface User {
   name: string
   email: string
   role: string
-  tenantId: string
-  tenantName: string
+  /** Identificador principal da conta neste sistema */
+  accountId: string
+  accountName?: string
+  /** Alias legado — mesmo valor que accountId */
+  tenantId?: string
+  tenantName?: string
 }
 
 export interface PlatformAdmin {
@@ -45,7 +49,7 @@ export interface DocumentType {
    WORKFLOWS
 ========================================================= */
 
-  export type WorkflowEventType =
+export type WorkflowEventType =
   | 'notification'
   | 'flow-change'
   | 'extra-check'
@@ -168,10 +172,9 @@ export type Workflow = {
   startConfig?: WorkflowStartConfig
   endConfig?: WorkflowEndConfig
   layout?: WorkflowLayout
-
-  // novo: xml BPMN persistido no front
   bpmnXml?: string
 }
+
 /* =========================================================
    DOCUMENTOS
 ========================================================= */
@@ -248,4 +251,3 @@ export interface UserListItem {
   isActive: boolean
   createdAt: string
 }
-

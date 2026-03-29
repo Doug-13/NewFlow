@@ -19,6 +19,7 @@ import { loadWorkflows } from '../storage'
 import type { WorkflowActivityConfig } from '../storage'
 import type { ActivityAction, ActivityActionOutcome } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 
 const { Text, Title } = Typography
 
@@ -26,9 +27,7 @@ type SubProcessConfigPanelProps = {
   workflowId: string
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowActivityConfig | null
-  onSave: (
-    values: Omit<WorkflowActivityConfig, 'id' | 'createdAt' | 'updatedAt'>,
-  ) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = {
@@ -125,25 +124,27 @@ export function SubProcessConfigPanel({
       elementId:   selectedElement.id,
       elementType: selectedElement.type,
       elementName: selectedElement.name,
-      assignmentMode:          values.assignmentMode,
-      responsibleUserIds:      values.responsibleUserIds      ?? [],
-      responsibleRoleIds:      values.responsibleRoleIds      ?? [],
-      responsibleAreaIds:      values.responsibleAreaIds      ?? [],
-      responsibleFunctionIds:  values.responsibleFunctionIds  ?? [],
-      deadlineMode:            values.deadlineMode,
-      deadlineValue:           values.deadlineValue,
-      metadataDefinitionIds:   values.metadataDefinitionIds   ?? [],
-      notificationTemplateIds: values.notificationTemplateIds ?? [],
-      // Booleans derivados das ações (retrocompatibilidade)
-      allowApprove:        actions.some((a) => a.outcome === 'approve'),
-      allowReject:         actions.some((a) => a.outcome === 'reject'),
-      allowRequestChanges: actions.some((a) => a.outcome === 'request-changes'),
-      allowForward:        actions.some((a) => a.outcome === 'forward'),
-      actions,
-      instructions:    values.instructions,
-      helpText:        values.helpText,
-      linkedWorkflowId: values.linkedWorkflowId,
-    } as any)
+      kind: 'activity',
+      config: {
+        assignmentMode:          values.assignmentMode,
+        responsibleUserIds:      values.responsibleUserIds      ?? [],
+        responsibleRoleIds:      values.responsibleRoleIds      ?? [],
+        responsibleAreaIds:      values.responsibleAreaIds      ?? [],
+        responsibleFunctionIds:  values.responsibleFunctionIds  ?? [],
+        deadlineMode:            values.deadlineMode,
+        deadlineValue:           values.deadlineValue,
+        metadataDefinitionIds:   values.metadataDefinitionIds   ?? [],
+        notificationTemplateIds: values.notificationTemplateIds ?? [],
+        allowApprove:        actions.some((a) => a.outcome === 'approve'),
+        allowReject:         actions.some((a) => a.outcome === 'reject'),
+        allowRequestChanges: actions.some((a) => a.outcome === 'request-changes'),
+        allowForward:        actions.some((a) => a.outcome === 'forward'),
+        actions,
+        instructions:     values.instructions,
+        helpText:         values.helpText,
+        linkedWorkflowId: values.linkedWorkflowId,
+      } as any,
+    })
   }
 
   return (
@@ -166,9 +167,7 @@ export function SubProcessConfigPanel({
 
         {availableWorkflows.length === 0 ? (
           <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 16 }}
+            type="warning" showIcon style={{ marginBottom: 16 }}
             title="Nenhum workflow disponível"
             description="Crie outros workflows no sistema para poder vinculá-los como subprocesso."
           />
@@ -178,13 +177,7 @@ export function SubProcessConfigPanel({
             name="linkedWorkflowId"
             rules={[{ required: true, message: 'Vincule um workflow filho ao subprocesso' }]}
           >
-            <Select
-              showSearch
-              allowClear
-              placeholder="Buscar e selecionar workflow..."
-              optionFilterProp="label"
-              options={availableWorkflows}
-            />
+            <Select showSearch allowClear placeholder="Buscar e selecionar workflow..." optionFilterProp="label" options={availableWorkflows} />
           </Form.Item>
         )}
 
@@ -199,22 +192,10 @@ export function SubProcessConfigPanel({
             { label: 'Área',    value: 'area' },
           ]} />
         </Form.Item>
-
-        <Form.Item label="Usuários responsáveis" name="responsibleUserIds">
-          <Select mode="tags" placeholder="Ex.: douglas, maria" />
-        </Form.Item>
-
-        <Form.Item label="Cargos responsáveis" name="responsibleRoleIds">
-          <Select mode="tags" placeholder="Ex.: aprovador, revisor" />
-        </Form.Item>
-
-        <Form.Item label="Áreas responsáveis" name="responsibleAreaIds">
-          <Select mode="tags" placeholder="Ex.: qualidade, engenharia" />
-        </Form.Item>
-
-        <Form.Item label="Funções responsáveis" name="responsibleFunctionIds">
-          <Select mode="tags" placeholder="Ex.: elaborador, gestor" />
-        </Form.Item>
+        <Form.Item label="Usuários responsáveis"  name="responsibleUserIds">     <Select mode="tags" placeholder="Ex.: douglas, maria" /></Form.Item>
+        <Form.Item label="Cargos responsáveis"    name="responsibleRoleIds">     <Select mode="tags" placeholder="Ex.: aprovador, revisor" /></Form.Item>
+        <Form.Item label="Áreas responsáveis"     name="responsibleAreaIds">     <Select mode="tags" placeholder="Ex.: qualidade, engenharia" /></Form.Item>
+        <Form.Item label="Funções responsáveis"   name="responsibleFunctionIds"> <Select mode="tags" placeholder="Ex.: elaborador, gestor" /></Form.Item>
 
         {/* ── Prazo ───────────────────────────────────────────────── */}
         <Space style={{ width: '100%', display: 'flex' }} size={12}>
@@ -233,13 +214,8 @@ export function SubProcessConfigPanel({
           </Form.Item>
         </Space>
 
-        <Form.Item label="Metadados obrigatórios" name="metadataDefinitionIds">
-          <Select mode="tags" placeholder="Ex.: titulo, codigo" />
-        </Form.Item>
-
-        <Form.Item label="Templates de notificação" name="notificationTemplateIds">
-          <Select mode="tags" placeholder="Ex.: notif-subprocesso" />
-        </Form.Item>
+        <Form.Item label="Metadados obrigatórios"    name="metadataDefinitionIds">  <Select mode="tags" placeholder="Ex.: titulo, codigo" /></Form.Item>
+        <Form.Item label="Templates de notificação"  name="notificationTemplateIds"><Select mode="tags" placeholder="Ex.: notif-subprocesso" /></Form.Item>
 
         <Divider />
 
@@ -260,18 +236,12 @@ export function SubProcessConfigPanel({
                   title={
                     <Space size={6}>
                       <Form.Item name={[name, 'label']} noStyle rules={[{ required: true }]}>
-                        <Input
-                          placeholder="Nome da ação"
-                          variant="borderless"
-                          style={{ fontWeight: 600, padding: 0, width: 150 }}
-                        />
+                        <Input placeholder="Nome da ação" variant="borderless" style={{ fontWeight: 600, padding: 0, width: 150 }} />
                       </Form.Item>
                       <ActionTagPreview form={form} name={name} />
                     </Space>
                   }
-                  extra={
-                    <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />
-                  }
+                  extra={<Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />}
                 >
                   <Space size={8} style={{ flexWrap: 'wrap' }}>
                     <Form.Item label="Cor" name={[name, 'color']} style={{ marginBottom: 0, minWidth: 110 }}>
@@ -285,12 +255,8 @@ export function SubProcessConfigPanel({
               ))}
 
               <Button
-                type="dashed"
-                block
-                icon={<PlusOutlined />}
-                onClick={() =>
-                  add({ id: crypto.randomUUID(), label: 'Nova ação', color: 'default', outcome: 'custom', requiresComment: false })
-                }
+                type="dashed" block icon={<PlusOutlined />}
+                onClick={() => add({ id: crypto.randomUUID(), label: 'Nova ação', color: 'default', outcome: 'custom', requiresComment: false })}
               >
                 Adicionar ação
               </Button>

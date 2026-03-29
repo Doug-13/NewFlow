@@ -1,14 +1,28 @@
 import { getStudioElementKind } from './studioElementKinds'
 
+export type ScopeLevel = 'account' | 'environment' | 'process'
+
+export type ScopeContext = {
+  accountId: string
+  environmentId?: string | null
+  processId?: string | null
+}
+
 export type WorkflowStatus = 'draft' | 'active' | 'inactive' | 'archived'
 
 export type WorkflowPermissionEntry = {
   userIds: string[]
   groupIds: string[]
-  unitIds: string[]
+  environmentIds: string[]
+  processIds: string[]
   areaIds: string[]
   disciplineIds: string[]
   roleIds: string[]
+
+  /**
+   * Compatibilidade temporária com a estrutura antiga.
+   */
+  unitIds: string[]
 }
 
 export type WorkflowPermissions = {
@@ -16,21 +30,43 @@ export type WorkflowPermissions = {
   creation: WorkflowPermissionEntry
 }
 
-export const EMPTY_PERMISSION_ENTRY: WorkflowPermissionEntry = {
-  userIds: [],
-  groupIds: [],
-  unitIds: [],
-  areaIds: [],
-  disciplineIds: [],
-  roleIds: [],
+function createEmptyPermissionEntry(): WorkflowPermissionEntry {
+  return {
+    userIds: [],
+    groupIds: [],
+    environmentIds: [],
+    processIds: [],
+    areaIds: [],
+    disciplineIds: [],
+    roleIds: [],
+    unitIds: [],
+  }
 }
+
+export const EMPTY_PERMISSION_ENTRY: WorkflowPermissionEntry =
+  createEmptyPermissionEntry()
 
 export const EMPTY_WORKFLOW_PERMISSIONS: WorkflowPermissions = {
-  visualization: { ...EMPTY_PERMISSION_ENTRY },
-  creation: { ...EMPTY_PERMISSION_ENTRY },
+  visualization: createEmptyPermissionEntry(),
+  creation: createEmptyPermissionEntry(),
 }
 
-export type WorkflowDefinition = {
+export type WorkflowScopedBase = {
+  accountId: string
+  accountName?: string
+  environmentId?: string | null
+  environmentName?: string | null
+  processId?: string | null
+  processName?: string | null
+  scopeLevel: ScopeLevel
+
+  /**
+   * Compatibilidade temporária com a estrutura antiga.
+   */
+  tenantId?: string
+}
+
+export type WorkflowDefinition = WorkflowScopedBase & {
   id: string
   name: string
   description?: string
@@ -192,7 +228,7 @@ export type WorkflowElementKind =
   | 'notification'
   | 'system-task'
 
-export type WorkflowElementConfig = {
+export type WorkflowElementConfig = WorkflowScopedBase & {
   id: string
   workflowId: string
   elementId: string
@@ -200,18 +236,18 @@ export type WorkflowElementConfig = {
   elementName?: string
   kind: WorkflowElementKind
   config:
-  | StartEventConfig
-  | ActivityConfig
-  | GatewayConfig
-  | FlowConfig
-  | EndEventConfig
-  | NotificationEventConfig
-  | SystemTaskConfig
+    | StartEventConfig
+    | ActivityConfig
+    | GatewayConfig
+    | FlowConfig
+    | EndEventConfig
+    | NotificationEventConfig
+    | SystemTaskConfig
   createdAt: string
   updatedAt: string
 }
 
-export type WorkflowActivityConfig = {
+export type WorkflowActivityConfig = WorkflowScopedBase & {
   id: string
   workflowId: string
   elementId: string
@@ -243,7 +279,7 @@ export type WorkflowActivityConfig = {
   updatedAt: string
 }
 
-export type WorkflowVersionSnapshot = {
+export type WorkflowVersionSnapshot = WorkflowScopedBase & {
   id: string
   workflowId: string
   versionLabel: string
@@ -284,21 +320,154 @@ function safeParseJson<T>(value: string | null, fallback: T): T {
   }
 }
 
+function readArrayFromStorage(key: string): any[] {
+  return safeParseJson<any[]>(readStorage(key), [])
+}
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((item): item is string => typeof item === 'string')
 }
 
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function toOptionalNullableString(value: unknown): string | null | undefined {
+  if (value === null) return null
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)))
+}
+
+function normalizeScopeLevel(
+  value: unknown,
+  environmentId?: string | null,
+  processId?: string | null,
+): ScopeLevel {
+  if (value === 'account' || value === 'environment' || value === 'process') {
+    return value
+  }
+
+  if (processId) return 'process'
+  if (environmentId) return 'environment'
+  return 'account'
+}
+
+function normalizeScopedBase(
+  value: any,
+  fallback?: Partial<WorkflowScopedBase>,
+): WorkflowScopedBase {
+  const accountId =
+    toOptionalString(value?.accountId) ??
+    toOptionalString(value?.tenantId) ??
+    toOptionalString(fallback?.accountId) ??
+    toOptionalString(fallback?.tenantId) ??
+    ''
+
+  const environmentId =
+    toOptionalNullableString(value?.environmentId) ??
+    toOptionalNullableString(value?.unitId) ??
+    toOptionalNullableString(fallback?.environmentId) ??
+    null
+
+  const processId =
+    toOptionalNullableString(value?.processId) ??
+    toOptionalNullableString(fallback?.processId) ??
+    null
+
+  const scopeLevel = normalizeScopeLevel(
+    value?.scopeLevel ?? fallback?.scopeLevel,
+    environmentId,
+    processId,
+  )
+
+  return {
+    accountId,
+    accountName:
+      toOptionalString(value?.accountName) ??
+      toOptionalString(fallback?.accountName),
+    environmentId,
+    environmentName:
+      toOptionalNullableString(value?.environmentName) ??
+      toOptionalNullableString(value?.unitName) ??
+      toOptionalNullableString(fallback?.environmentName) ??
+      null,
+    processId,
+    processName:
+      toOptionalNullableString(value?.processName) ??
+      toOptionalNullableString(fallback?.processName) ??
+      null,
+    scopeLevel,
+    tenantId:
+      toOptionalString(value?.tenantId) ??
+      toOptionalString(fallback?.tenantId) ??
+      (accountId || undefined),
+  }
+}
+
+function getScopeWeight(scopeLevel: ScopeLevel): number {
+  if (scopeLevel === 'process') return 3
+  if (scopeLevel === 'environment') return 2
+  return 1
+}
+
+function matchesScope(
+  record: WorkflowScopedBase,
+  context: ScopeContext,
+): boolean {
+  if (record.accountId !== context.accountId) {
+    return false
+  }
+
+  if (record.scopeLevel === 'account') {
+    return true
+  }
+
+  if (record.scopeLevel === 'environment') {
+    return record.environmentId === (context.environmentId ?? null)
+  }
+
+  return record.processId === (context.processId ?? null)
+}
+
+function getWorkflowScopeFallback(
+  workflowId: string,
+): Partial<WorkflowScopedBase> | undefined {
+  const workflow = loadWorkflows().find((item) => item.id === workflowId)
+  if (!workflow) return undefined
+
+  return {
+    accountId: workflow.accountId,
+    accountName: workflow.accountName,
+    environmentId: workflow.environmentId,
+    environmentName: workflow.environmentName,
+    processId: workflow.processId,
+    processName: workflow.processName,
+    scopeLevel: workflow.scopeLevel,
+    tenantId: workflow.tenantId,
+  }
+}
+
 function normalizePermissionEntry(value: unknown): WorkflowPermissionEntry {
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 
+  const environmentIds = uniqueStrings([
+    ...toStringArray(raw.environmentIds),
+    ...toStringArray(raw.unitIds),
+  ])
+
   return {
-    userIds: toStringArray(raw.userIds),
-    groupIds: toStringArray(raw.groupIds),
-    unitIds: toStringArray(raw.unitIds),
-    areaIds: toStringArray(raw.areaIds),
-    disciplineIds: toStringArray(raw.disciplineIds),
-    roleIds: toStringArray(raw.roleIds),
+    userIds: uniqueStrings(toStringArray(raw.userIds)),
+    groupIds: uniqueStrings(toStringArray(raw.groupIds)),
+    environmentIds,
+    processIds: uniqueStrings(toStringArray(raw.processIds)),
+    areaIds: uniqueStrings(toStringArray(raw.areaIds)),
+    disciplineIds: uniqueStrings(toStringArray(raw.disciplineIds)),
+    roleIds: uniqueStrings(toStringArray(raw.roleIds)),
+    unitIds: environmentIds,
   }
 }
 
@@ -314,7 +483,10 @@ function normalizePermissions(value: unknown): WorkflowPermissions | undefined {
 }
 
 function normalizeWorkflow(item: any): WorkflowDefinition {
+  const scoped = normalizeScopedBase(item)
+
   return {
+    ...scoped,
     id: String(item?.id ?? crypto.randomUUID()),
     name: String(item?.name ?? 'Workflow sem nome'),
     description:
@@ -325,9 +497,9 @@ function normalizeWorkflow(item: any): WorkflowDefinition {
         : '1.0',
     status:
       item?.status === 'draft' ||
-        item?.status === 'active' ||
-        item?.status === 'inactive' ||
-        item?.status === 'archived'
+      item?.status === 'active' ||
+      item?.status === 'inactive' ||
+      item?.status === 'archived'
         ? item.status
         : 'draft',
     documentTypeId:
@@ -363,20 +535,20 @@ function normalizeActivityAction(item: any): ActivityAction {
     label: typeof item?.label === 'string' ? item.label : 'Ação',
     color:
       item?.color === 'green' ||
-        item?.color === 'red' ||
-        item?.color === 'orange' ||
-        item?.color === 'blue' ||
-        item?.color === 'purple' ||
-        item?.color === 'gold' ||
-        item?.color === 'default'
+      item?.color === 'red' ||
+      item?.color === 'orange' ||
+      item?.color === 'blue' ||
+      item?.color === 'purple' ||
+      item?.color === 'gold' ||
+      item?.color === 'default'
         ? item.color
         : 'default',
     outcome:
       item?.outcome === 'approve' ||
-        item?.outcome === 'reject' ||
-        item?.outcome === 'request-changes' ||
-        item?.outcome === 'forward' ||
-        item?.outcome === 'custom'
+      item?.outcome === 'reject' ||
+      item?.outcome === 'request-changes' ||
+      item?.outcome === 'forward' ||
+      item?.outcome === 'custom'
         ? item.outcome
         : 'custom',
     confirmText:
@@ -395,10 +567,10 @@ function normalizeSendTaskConfig(item: any): SendTaskConfig | undefined {
         : undefined,
     channel:
       item.channel === 'email' ||
-        item.channel === 'in-app' ||
-        item.channel === 'whatsapp' ||
-        item.channel === 'sms' ||
-        item.channel === 'all'
+      item.channel === 'in-app' ||
+      item.channel === 'whatsapp' ||
+      item.channel === 'sms' ||
+      item.channel === 'all'
         ? item.channel
         : 'email',
     recipientRoleIds: toStringArray(item.recipientRoleIds),
@@ -417,54 +589,54 @@ function normalizeSendTaskConfig(item: any): SendTaskConfig | undefined {
 function normalizeActivityConfigValue(item: any): ActivityConfig {
   const metadataDefinitionIds: string[] = Array.isArray(item?.metadataDefinitionIds)
     ? item.metadataDefinitionIds.filter(
-      (value: unknown): value is string => typeof value === 'string',
-    )
+        (value: unknown): value is string => typeof value === 'string',
+      )
     : []
 
   const metadataFields: ActivityMetadataFieldRule[] = Array.isArray(item?.metadataFields)
     ? item.metadataFields
-      .filter(
-        (value: unknown): value is Record<string, unknown> =>
-          Boolean(value) && typeof value === 'object',
-      )
-      .map((field: Record<string, unknown>): ActivityMetadataFieldRule => ({
-        metadataDefinitionId: String(field.metadataDefinitionId ?? ''),
-        name: typeof field.name === 'string' ? field.name : undefined,
-        label: typeof field.label === 'string' ? field.label : undefined,
-        fieldType: typeof field.fieldType === 'string' ? field.fieldType : undefined,
-        metadataSetId:
-          typeof field.metadataSetId === 'string' ? field.metadataSetId : undefined,
-        metadataSetName:
-          typeof field.metadataSetName === 'string'
-            ? field.metadataSetName
-            : undefined,
-        isRequired: Boolean(field.isRequired),
-        isReadOnly: Boolean(field.isReadOnly),
-      }))
-      .filter(
-        (field: ActivityMetadataFieldRule) => Boolean(field.metadataDefinitionId),
-      )
+        .filter(
+          (value: unknown): value is Record<string, unknown> =>
+            Boolean(value) && typeof value === 'object',
+        )
+        .map((field: Record<string, unknown>): ActivityMetadataFieldRule => ({
+          metadataDefinitionId: String(field.metadataDefinitionId ?? ''),
+          name: typeof field.name === 'string' ? field.name : undefined,
+          label: typeof field.label === 'string' ? field.label : undefined,
+          fieldType: typeof field.fieldType === 'string' ? field.fieldType : undefined,
+          metadataSetId:
+            typeof field.metadataSetId === 'string' ? field.metadataSetId : undefined,
+          metadataSetName:
+            typeof field.metadataSetName === 'string'
+              ? field.metadataSetName
+              : undefined,
+          isRequired: Boolean(field.isRequired),
+          isReadOnly: Boolean(field.isReadOnly),
+        }))
+        .filter(
+          (field: ActivityMetadataFieldRule) => Boolean(field.metadataDefinitionId),
+        )
     : metadataDefinitionIds.map(
-      (id: string): ActivityMetadataFieldRule => ({
-        metadataDefinitionId: id,
-        isRequired: false,
-        isReadOnly: false,
-      }),
-    )
+        (id: string): ActivityMetadataFieldRule => ({
+          metadataDefinitionId: id,
+          isRequired: false,
+          isReadOnly: false,
+        }),
+      )
 
   const resolvedMetadataDefinitionIds: string[] =
     metadataFields.length > 0
       ? metadataFields.map(
-        (field: ActivityMetadataFieldRule) => field.metadataDefinitionId,
-      )
+          (field: ActivityMetadataFieldRule) => field.metadataDefinitionId,
+        )
       : metadataDefinitionIds
 
   return {
     assignmentMode:
       item?.assignmentMode === 'user' ||
-        item?.assignmentMode === 'role' ||
-        item?.assignmentMode === 'area' ||
-        item?.assignmentMode === 'function'
+      item?.assignmentMode === 'role' ||
+      item?.assignmentMode === 'area' ||
+      item?.assignmentMode === 'function'
         ? item.assignmentMode
         : 'role',
 
@@ -475,14 +647,14 @@ function normalizeActivityConfigValue(item: any): ActivityConfig {
 
     deadlineMode:
       item?.deadlineMode === 'hours' ||
-        item?.deadlineMode === 'days' ||
-        item?.deadlineMode === 'fixed-date'
+      item?.deadlineMode === 'days' ||
+      item?.deadlineMode === 'fixed-date'
         ? item.deadlineMode
         : 'days',
 
     deadlineValue:
       typeof item?.deadlineValue === 'number' ||
-        typeof item?.deadlineValue === 'string'
+      typeof item?.deadlineValue === 'string'
         ? item.deadlineValue
         : undefined,
 
@@ -581,8 +753,8 @@ function normalizeGatewayConfig(item: any): GatewayConfig {
   return {
     decisionMode:
       item?.decisionMode === 'manual' ||
-        item?.decisionMode === 'metadata-rule' ||
-        item?.decisionMode === 'expression'
+      item?.decisionMode === 'metadata-rule' ||
+      item?.decisionMode === 'expression'
         ? item.decisionMode
         : 'manual',
     decisionDescription:
@@ -604,8 +776,8 @@ function normalizeFlowConfig(item: any): FlowConfig {
     label: typeof item?.label === 'string' ? item.label : undefined,
     conditionType:
       item?.conditionType === 'always' ||
-        item?.conditionType === 'expression' ||
-        item?.conditionType === 'metadata-value'
+      item?.conditionType === 'expression' ||
+      item?.conditionType === 'metadata-value'
         ? item.conditionType
         : 'always',
     expression:
@@ -630,9 +802,9 @@ function normalizeEndEventConfig(item: any): EndEventConfig {
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
     finalAction:
       item?.finalAction === 'complete' ||
-        item?.finalAction === 'archive' ||
-        item?.finalAction === 'publish' ||
-        item?.finalAction === 'open-linked-workflow'
+      item?.finalAction === 'archive' ||
+      item?.finalAction === 'publish' ||
+      item?.finalAction === 'open-linked-workflow'
         ? item.finalAction
         : 'complete',
     linkedWorkflowId:
@@ -652,10 +824,10 @@ function normalizeNotificationEventConfig(item: any): NotificationEventConfig {
         : undefined,
     channel:
       item?.channel === 'email' ||
-        item?.channel === 'in-app' ||
-        item?.channel === 'whatsapp' ||
-        item?.channel === 'sms' ||
-        item?.channel === 'all'
+      item?.channel === 'in-app' ||
+      item?.channel === 'whatsapp' ||
+      item?.channel === 'sms' ||
+      item?.channel === 'all'
         ? item.channel
         : 'email',
     recipientRoleIds: toStringArray(item?.recipientRoleIds),
@@ -675,10 +847,10 @@ function normalizeSystemTaskConfig(item: any): SystemTaskConfig {
   return {
     actionType:
       item?.actionType === 'increment-revision' ||
-        item?.actionType === 'set-metadata' ||
-        item?.actionType === 'copy-metadata' ||
-        item?.actionType === 'http-request' ||
-        item?.actionType === 'custom-script'
+      item?.actionType === 'set-metadata' ||
+      item?.actionType === 'copy-metadata' ||
+      item?.actionType === 'http-request' ||
+      item?.actionType === 'custom-script'
         ? item.actionType
         : 'increment-revision',
     auditNote:
@@ -708,7 +880,11 @@ function normalizeElementKind(kind: unknown, elementType?: string): WorkflowElem
   return 'activity'
 }
 
-function normalizeWorkflowElementConfig(item: any): WorkflowElementConfig {
+function normalizeWorkflowElementConfig(
+  item: any,
+  fallbackScope?: Partial<WorkflowScopedBase>,
+): WorkflowElementConfig {
+  const scoped = normalizeScopedBase(item, fallbackScope)
   const kind = normalizeElementKind(item?.kind, item?.elementType)
   const rawConfig = item?.config ?? {}
 
@@ -740,6 +916,7 @@ function normalizeWorkflowElementConfig(item: any): WorkflowElementConfig {
   }
 
   return {
+    ...scoped,
     id: String(item?.id ?? crypto.randomUUID()),
     workflowId: String(item?.workflowId ?? ''),
     elementId: String(item?.elementId ?? ''),
@@ -759,10 +936,15 @@ function normalizeWorkflowElementConfig(item: any): WorkflowElementConfig {
   }
 }
 
-function normalizeWorkflowActivityConfig(item: any): WorkflowActivityConfig {
+function normalizeWorkflowActivityConfig(
+  item: any,
+  fallbackScope?: Partial<WorkflowScopedBase>,
+): WorkflowActivityConfig {
+  const scoped = normalizeScopedBase(item, fallbackScope)
   const normalizedConfig = normalizeActivityConfigValue(item)
 
   return {
+    ...scoped,
     id: String(item?.id ?? crypto.randomUUID()),
     workflowId: String(item?.workflowId ?? ''),
     elementId: String(item?.elementId ?? ''),
@@ -789,6 +971,14 @@ function elementConfigToActivityConfig(
   const config = normalizeActivityConfigValue(item.config)
 
   return {
+    accountId: item.accountId,
+    accountName: item.accountName,
+    environmentId: item.environmentId,
+    environmentName: item.environmentName,
+    processId: item.processId,
+    processName: item.processName,
+    scopeLevel: item.scopeLevel,
+    tenantId: item.tenantId,
     id: item.id,
     workflowId: item.workflowId,
     elementId: item.elementId,
@@ -806,6 +996,14 @@ function activityConfigToElementConfig(
   const normalizedActivity = normalizeWorkflowActivityConfig(item)
 
   return {
+    accountId: normalizedActivity.accountId,
+    accountName: normalizedActivity.accountName,
+    environmentId: normalizedActivity.environmentId,
+    environmentName: normalizedActivity.environmentName,
+    processId: normalizedActivity.processId,
+    processName: normalizedActivity.processName,
+    scopeLevel: normalizedActivity.scopeLevel,
+    tenantId: normalizedActivity.tenantId,
     id: normalizedActivity.id,
     workflowId: normalizedActivity.workflowId,
     elementId: normalizedActivity.elementId,
@@ -824,7 +1022,8 @@ function dedupeElementConfigs(
   const map = new Map<string, WorkflowElementConfig>()
 
   items.forEach((item) => {
-    const normalized = normalizeWorkflowElementConfig(item)
+    const fallbackScope = getWorkflowScopeFallback(item.workflowId)
+    const normalized = normalizeWorkflowElementConfig(item, fallbackScope)
     const key = `${normalized.workflowId}::${normalized.elementId}`
     map.set(key, normalized)
   })
@@ -836,15 +1035,20 @@ function dedupeElementConfigs(
 
 function normalizeSnapshot(item: any): WorkflowVersionSnapshot {
   const workflow = normalizeWorkflow(item?.workflow ?? {})
+  const scoped = normalizeScopedBase(item, workflow)
+
   const elementConfigs = Array.isArray(item?.elementConfigs)
-    ? item.elementConfigs.map(normalizeWorkflowElementConfig)
+    ? item.elementConfigs.map((config: any) =>
+        normalizeWorkflowElementConfig(config, workflow),
+      )
     : Array.isArray(item?.activityConfigs)
       ? item.activityConfigs
-        .map(normalizeWorkflowActivityConfig)
-        .map(activityConfigToElementConfig)
+          .map((config: any) => normalizeWorkflowActivityConfig(config, workflow))
+          .map(activityConfigToElementConfig)
       : []
 
   return {
+    ...scoped,
     id: String(item?.id ?? crypto.randomUUID()),
     workflowId: String(item?.workflowId ?? workflow.id ?? ''),
     versionLabel:
@@ -861,10 +1065,6 @@ function normalizeSnapshot(item: any): WorkflowVersionSnapshot {
   }
 }
 
-function readArrayFromStorage(key: string): any[] {
-  return safeParseJson<any[]>(readStorage(key), [])
-}
-
 export function loadWorkflows(): WorkflowDefinition[] {
   const raw = readArrayFromStorage(WORKFLOWS_KEY)
   return Array.isArray(raw) ? raw.map(normalizeWorkflow) : []
@@ -878,12 +1078,88 @@ export function getWorkflowById(id: string) {
   return loadWorkflows().find((item) => item.id === id) ?? null
 }
 
+export function listWorkflowsByScope(
+  context: ScopeContext,
+  options?: {
+    includeInherited?: boolean
+    status?: WorkflowStatus | WorkflowStatus[]
+    documentTypeId?: string
+  },
+) {
+  const includeInherited = options?.includeInherited ?? true
+  const statuses = Array.isArray(options?.status)
+    ? options.status
+    : options?.status
+      ? [options.status]
+      : null
+
+  const items = loadWorkflows()
+    .filter((item) => item.accountId === context.accountId)
+    .filter((item) => {
+      if (statuses && !statuses.includes(item.status)) {
+        return false
+      }
+
+      if (options?.documentTypeId && item.documentTypeId !== options.documentTypeId) {
+        return false
+      }
+
+      if (includeInherited) {
+        return matchesScope(item, context)
+      }
+
+      if (context.processId) {
+        return item.scopeLevel === 'process' && item.processId === context.processId
+      }
+
+      if (context.environmentId) {
+        return (
+          item.scopeLevel === 'environment' &&
+          item.environmentId === context.environmentId
+        )
+      }
+
+      return item.scopeLevel === 'account'
+    })
+    .sort((a, b) => {
+      const scopeOrder = getScopeWeight(b.scopeLevel) - getScopeWeight(a.scopeLevel)
+      if (scopeOrder !== 0) return scopeOrder
+      return +new Date(b.updatedAt) - +new Date(a.updatedAt)
+    })
+
+  return items
+}
+
+export function getBestWorkflowMatch(
+  context: ScopeContext,
+  options?: {
+    workflowId?: string
+    documentTypeId?: string
+    status?: WorkflowStatus | WorkflowStatus[]
+  },
+) {
+  const items = listWorkflowsByScope(context, {
+    includeInherited: true,
+    status: options?.status,
+    documentTypeId: options?.documentTypeId,
+  })
+
+  if (options?.workflowId) {
+    return items.find((item) => item.id === options.workflowId) ?? null
+  }
+
+  return items[0] ?? null
+}
+
 export function upsertWorkflow(workflow: WorkflowDefinition) {
   const current = loadWorkflows()
   const index = current.findIndex((item) => item.id === workflow.id)
+  const now = new Date().toISOString()
+
   const nextWorkflow = normalizeWorkflow({
     ...workflow,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
+    tenantId: workflow.tenantId ?? workflow.accountId,
   })
 
   if (index >= 0) {
@@ -896,6 +1172,13 @@ export function upsertWorkflow(workflow: WorkflowDefinition) {
 }
 
 export function createWorkflowDraft(input: {
+  accountId: string
+  accountName?: string
+  scopeLevel?: ScopeLevel
+  environmentId?: string | null
+  environmentName?: string | null
+  processId?: string | null
+  processName?: string | null
   name: string
   description?: string
   version?: string
@@ -904,9 +1187,22 @@ export function createWorkflowDraft(input: {
   documentTypeName?: string
 }) {
   const now = new Date().toISOString()
+  const scopeLevel = normalizeScopeLevel(
+    input.scopeLevel,
+    input.environmentId ?? null,
+    input.processId ?? null,
+  )
 
   return normalizeWorkflow({
     id: crypto.randomUUID(),
+    accountId: input.accountId,
+    accountName: input.accountName,
+    environmentId: input.environmentId ?? null,
+    environmentName: input.environmentName ?? null,
+    processId: input.processId ?? null,
+    processName: input.processName ?? null,
+    scopeLevel,
+    tenantId: input.accountId,
     name: input.name,
     description: input.description,
     version: input.version || '1.0',
@@ -922,13 +1218,19 @@ export function createWorkflowDraft(input: {
 
 export function loadWorkflowElementConfigs(): WorkflowElementConfig[] {
   const primary = readArrayFromStorage(ELEMENT_CONFIGS_KEY)
-    .map(normalizeWorkflowElementConfig)
+    .map((item) =>
+      normalizeWorkflowElementConfig(item, getWorkflowScopeFallback(String(item?.workflowId ?? ''))),
+    )
 
   const legacyElementConfigs = readArrayFromStorage(LEGACY_ELEMENT_CONFIGS_KEY)
-    .map(normalizeWorkflowElementConfig)
+    .map((item) =>
+      normalizeWorkflowElementConfig(item, getWorkflowScopeFallback(String(item?.workflowId ?? ''))),
+    )
 
   const legacyActivityConfigs = readArrayFromStorage(LEGACY_ACTIVITY_CONFIGS_KEY)
-    .map(normalizeWorkflowActivityConfig)
+    .map((item) =>
+      normalizeWorkflowActivityConfig(item, getWorkflowScopeFallback(String(item?.workflowId ?? ''))),
+    )
     .map(activityConfigToElementConfig)
 
   const merged = dedupeElementConfigs([
@@ -947,6 +1249,16 @@ export function loadWorkflowElementConfigs(): WorkflowElementConfig[] {
 export function saveWorkflowElementConfigs(items: WorkflowElementConfig[]) {
   const normalized = dedupeElementConfigs(items)
   writeStorage(ELEMENT_CONFIGS_KEY, JSON.stringify(normalized))
+}
+
+export function listWorkflowElementConfigsByScope(
+  context: ScopeContext,
+  options?: { workflowId?: string },
+) {
+  return loadWorkflowElementConfigs()
+    .filter((item) => matchesScope(item, context))
+    .filter((item) => (options?.workflowId ? item.workflowId === options.workflowId : true))
+    .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
 }
 
 export function getElementConfigsByWorkflow(workflowId: string) {
@@ -975,21 +1287,25 @@ export function upsertElementConfig(
       item.elementId === values.elementId,
   )
 
+  const fallbackScope = getWorkflowScopeFallback(values.workflowId)
   const now = new Date().toISOString()
 
   const nextItem: WorkflowElementConfig = normalizeWorkflowElementConfig(
     index >= 0
       ? {
-        ...current[index],
-        ...values,
-        updatedAt: now,
-      }
+          ...current[index],
+          ...values,
+          updatedAt: now,
+        }
       : {
-        ...values,
-        id: crypto.randomUUID(),
-        createdAt: now,
-        updatedAt: now,
-      },
+          ...fallbackScope,
+          ...values,
+          tenantId: values.tenantId ?? values.accountId ?? fallbackScope?.accountId,
+          id: crypto.randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+        },
+    fallbackScope,
   )
 
   const nextConfigs = [...current]
@@ -1029,7 +1345,7 @@ export function saveWorkflowActivityConfigs(items: WorkflowActivityConfig[]) {
   )
 
   const nextActivities = items
-    .map(normalizeWorkflowActivityConfig)
+    .map((item) => normalizeWorkflowActivityConfig(item, getWorkflowScopeFallback(item.workflowId)))
     .map(activityConfigToElementConfig)
 
   saveWorkflowElementConfigs([...currentNonActivities, ...nextActivities])
@@ -1050,14 +1366,28 @@ export function getActivityConfig(workflowId: string, elementId: string) {
 export function upsertActivityConfig(
   input: Omit<WorkflowActivityConfig, 'id' | 'createdAt' | 'updatedAt'>,
 ) {
-  const normalized = normalizeWorkflowActivityConfig({
-    ...input,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  })
+  const fallbackScope = getWorkflowScopeFallback(input.workflowId)
+  const normalized = normalizeWorkflowActivityConfig(
+    {
+      ...fallbackScope,
+      ...input,
+      tenantId: input.tenantId ?? input.accountId ?? fallbackScope?.accountId,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    fallbackScope,
+  )
 
   return upsertElementConfig({
+    accountId: normalized.accountId,
+    accountName: normalized.accountName,
+    environmentId: normalized.environmentId,
+    environmentName: normalized.environmentName,
+    processId: normalized.processId,
+    processName: normalized.processName,
+    scopeLevel: normalized.scopeLevel,
+    tenantId: normalized.tenantId,
     workflowId: normalized.workflowId,
     elementId: normalized.elementId,
     elementType: normalized.elementType,
@@ -1110,13 +1440,23 @@ export function createWorkflowSnapshot(input: {
   const items = loadWorkflowSnapshots()
 
   const normalizedElementConfigs = input.elementConfigs
-    ? input.elementConfigs.map(normalizeWorkflowElementConfig)
+    ? input.elementConfigs.map((item) =>
+        normalizeWorkflowElementConfig(item, input.workflow),
+      )
     : (input.activityConfigs ?? [])
-      .map(normalizeWorkflowActivityConfig)
-      .map(activityConfigToElementConfig)
+        .map((item) => normalizeWorkflowActivityConfig(item, input.workflow))
+        .map(activityConfigToElementConfig)
 
   const snapshot = normalizeSnapshot({
     id: crypto.randomUUID(),
+    accountId: input.workflow.accountId,
+    accountName: input.workflow.accountName,
+    environmentId: input.workflow.environmentId,
+    environmentName: input.workflow.environmentName,
+    processId: input.workflow.processId,
+    processName: input.workflow.processName,
+    scopeLevel: input.workflow.scopeLevel,
+    tenantId: input.workflow.tenantId ?? input.workflow.accountId,
     workflowId: input.workflow.id,
     versionLabel: input.versionLabel,
     note: input.note,
@@ -1145,10 +1485,13 @@ export function restoreWorkflowSnapshot(snapshotId: string) {
   )
 
   const restoredConfigs = snapshot.elementConfigs.map((item) =>
-    normalizeWorkflowElementConfig({
-      ...item,
-      updatedAt: new Date().toISOString(),
-    }),
+    normalizeWorkflowElementConfig(
+      {
+        ...item,
+        updatedAt: new Date().toISOString(),
+      },
+      snapshot.workflow,
+    ),
   )
 
   saveWorkflowElementConfigs([...allConfigs, ...restoredConfigs])

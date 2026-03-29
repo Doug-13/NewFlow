@@ -1,11 +1,3 @@
-/**
- * SendTaskConfigPanel.tsx
- *
- * Painel de configuração para bpmn:SendTask e eventos de mensagem
- * (ícone de envelope). Permite selecionar o template de notificação
- * e configurar quem receberá a mensagem.
- */
-
 import { useEffect } from 'react'
 import {
   Alert,
@@ -25,31 +17,22 @@ import {
 import { MailOutlined } from '@ant-design/icons'
 import type { WorkflowElementConfig } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
+import type { ElementConfigSavePayload } from '../panelTypes'
 
 const { Text, Title } = Typography
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SendTaskConfig = {
-  /** ID / slug do template de notificação */
   notificationTemplateId?: string
-  /** Canal de envio */
   channel: 'email' | 'in-app' | 'whatsapp' | 'sms' | 'all'
-  /** Destinatários por cargo */
   recipientRoleIds: string[]
-  /** Destinatários por usuário */
   recipientUserIds: string[]
-  /** Destinatários por área */
   recipientAreaIds: string[]
-  /** Se true, envia também para o iniciador do workflow */
   notifyInitiator: boolean
-  /** Se true, envia para todos os responsáveis da etapa anterior */
   notifyPreviousAssignees: boolean
-  /** Assunto personalizado (sobrescreve o do template) */
   customSubject?: string
-  /** Corpo personalizado (sobrescreve o do template) */
   customBody?: string
-  /** Variáveis de contexto disponíveis para o template */
   contextVariables: string[]
 }
 
@@ -57,16 +40,16 @@ type SendTaskConfigPanelProps = {
   workflowId: string
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
-  onSave: (values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>) => void
+  onSave: (values: ElementConfigSavePayload) => void
 }
 
 type FormValues = SendTaskConfig
 
 const CHANNEL_OPTIONS = [
-  { label: 'E-mail',         value: 'email' },
+  { label: 'E-mail',          value: 'email' },
   { label: 'Notificação app', value: 'in-app' },
-  { label: 'WhatsApp',       value: 'whatsapp' },
-  { label: 'SMS',            value: 'sms' },
+  { label: 'WhatsApp',        value: 'whatsapp' },
+  { label: 'SMS',             value: 'sms' },
   { label: 'Todos os canais', value: 'all' },
 ]
 
@@ -131,7 +114,6 @@ export function SendTaskConfigPanel({
       elementName: selectedElement.name,
       kind: 'activity',
       config: {
-        // campos base de atividade (sem ações, pois SendTask não tem executor)
         assignmentMode:          'role',
         responsibleUserIds:      [],
         responsibleRoleIds:      [],
@@ -144,7 +126,6 @@ export function SendTaskConfigPanel({
         actions:                 [],
         instructions:            undefined,
         helpText:                undefined,
-        // campos específicos de SendTask
         sendTask: {
           notificationTemplateId:  values.notificationTemplateId,
           channel:                 values.channel,
@@ -162,40 +143,21 @@ export function SendTaskConfigPanel({
   }
 
   return (
-    <Card
-      variant="borderless"
-      style={{ borderRadius: 18 }}
-      title="Configuração de envio / notificação"
-    >
+    <Card variant="borderless" style={{ borderRadius: 18 }} title="Configuração de envio / notificação">
       <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
+        type="info" showIcon style={{ marginBottom: 16 }}
         title={selectedElement.name || 'Tarefa de envio'}
         description="Configure o template de notificação e os destinatários desta mensagem automática."
       />
 
       <Form<FormValues> form={form} layout="vertical" onFinish={handleSubmit}>
-
-        {/* ── Template ────────────────────────────────────────────── */}
         <Space style={{ marginBottom: 8 }}>
           <MailOutlined style={{ color: '#1677ff', fontSize: 16 }} />
           <Title level={5} style={{ margin: 0 }}>Template de notificação</Title>
         </Space>
 
-        <Form.Item
-          label="Template"
-          name="notificationTemplateId"
-          rules={[{ required: true, message: 'Selecione ou informe o template de notificação' }]}
-        >
-          <Select
-            showSearch
-            allowClear
-            mode="tags"
-            maxCount={1}
-            placeholder="Ex.: notif-aprovacao, aviso-prazo, comunicado-publicacao"
-            optionFilterProp="label"
-          />
+        <Form.Item label="Template" name="notificationTemplateId" rules={[{ required: true, message: 'Selecione ou informe o template de notificação' }]}>
+          <Select showSearch allowClear mode="tags" maxCount={1} placeholder="Ex.: notif-aprovacao, aviso-prazo, comunicado-publicacao" optionFilterProp="label" />
         </Form.Item>
 
         <Form.Item label="Canal de envio" name="channel">
@@ -204,70 +166,28 @@ export function SendTaskConfigPanel({
 
         <Divider />
 
-        {/* ── Destinatários ───────────────────────────────────────── */}
         <Title level={5} style={{ marginBottom: 12 }}>Destinatários</Title>
 
         <Row gutter={[12, 0]}>
-          <Col xs={24}>
-            <Form.Item label="Cargos / perfis" name="recipientRoleIds">
-              <Select
-                mode="tags"
-                placeholder="Ex.: aprovador, gestor, qualidade"
-              />
-            </Form.Item>
-          </Col>
-
-          <Col xs={24}>
-            <Form.Item label="Usuários específicos" name="recipientUserIds">
-              <Select
-                mode="tags"
-                placeholder="Ex.: douglas, maria, joao"
-              />
-            </Form.Item>
-          </Col>
-
-          <Col xs={24}>
-            <Form.Item label="Áreas / departamentos" name="recipientAreaIds">
-              <Select
-                mode="tags"
-                placeholder="Ex.: qualidade, engenharia, TI"
-              />
-            </Form.Item>
-          </Col>
+          <Col xs={24}><Form.Item label="Cargos / perfis" name="recipientRoleIds"><Select mode="tags" placeholder="Ex.: aprovador, gestor, qualidade" /></Form.Item></Col>
+          <Col xs={24}><Form.Item label="Usuários específicos" name="recipientUserIds"><Select mode="tags" placeholder="Ex.: douglas, maria, joao" /></Form.Item></Col>
+          <Col xs={24}><Form.Item label="Áreas / departamentos" name="recipientAreaIds"><Select mode="tags" placeholder="Ex.: qualidade, engenharia, TI" /></Form.Item></Col>
         </Row>
 
         <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }} size={8}>
-          <Form.Item
-            name="notifyInitiator"
-            valuePropName="checked"
-            style={{ marginBottom: 0 }}
-          >
-            <Switch
-              checkedChildren="Notificar iniciador do processo"
-              unCheckedChildren="Não notificar iniciador"
-            />
+          <Form.Item name="notifyInitiator" valuePropName="checked" style={{ marginBottom: 0 }}>
+            <Switch checkedChildren="Notificar iniciador do processo" unCheckedChildren="Não notificar iniciador" />
           </Form.Item>
-
-          <Form.Item
-            name="notifyPreviousAssignees"
-            valuePropName="checked"
-            style={{ marginBottom: 0 }}
-          >
-            <Switch
-              checkedChildren="Notificar responsáveis da etapa anterior"
-              unCheckedChildren="Não notificar etapa anterior"
-            />
+          <Form.Item name="notifyPreviousAssignees" valuePropName="checked" style={{ marginBottom: 0 }}>
+            <Switch checkedChildren="Notificar responsáveis da etapa anterior" unCheckedChildren="Não notificar etapa anterior" />
           </Form.Item>
         </Space>
 
         <Divider />
 
-        {/* ── Conteúdo personalizado ──────────────────────────────── */}
         <Title level={5} style={{ marginBottom: 12 }}>
           Conteúdo personalizado
-          <Text type="secondary" style={{ fontSize: 12, fontWeight: 400, marginLeft: 8 }}>
-            (opcional — sobrescreve o template)
-          </Text>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 400, marginLeft: 8 }}>(opcional — sobrescreve o template)</Text>
         </Title>
 
         <Form.Item label="Assunto personalizado" name="customSubject">
@@ -275,21 +195,11 @@ export function SendTaskConfigPanel({
         </Form.Item>
 
         <Form.Item label="Corpo personalizado" name="customBody">
-          <Input.TextArea
-            rows={4}
-            placeholder="Olá, {{nome}}. O documento {{titulo}} foi encaminhado para você..."
-          />
+          <Input.TextArea rows={4} placeholder="Olá, {{nome}}. O documento {{titulo}} foi encaminhado para você..." />
         </Form.Item>
 
-        <Form.Item
-          label="Variáveis de contexto disponíveis"
-          name="contextVariables"
-          tooltip="Informe as variáveis que serão substituídas no template: ex. titulo, codigo, aprovador"
-        >
-          <Select
-            mode="tags"
-            placeholder="Ex.: titulo, codigo, aprovador, prazo"
-          />
+        <Form.Item label="Variáveis de contexto disponíveis" name="contextVariables" tooltip="Informe as variáveis que serão substituídas no template: ex. titulo, codigo, aprovador">
+          <Select mode="tags" placeholder="Ex.: titulo, codigo, aprovador, prazo" />
         </Form.Item>
 
         <Button type="primary" htmlType="submit" block>

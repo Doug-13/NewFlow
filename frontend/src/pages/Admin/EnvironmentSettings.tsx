@@ -1,57 +1,36 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert,
-  Button,
-  Card,
-  Col,
-  Divider,
-  Form,
-  Input,
-  InputNumber,
-  Radio,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Switch,
-  Tabs,
-  Typography,
-  message,
+  Alert, Button, Card, Col, Divider, Form, Input, InputNumber,
+  Radio, Row, Select, Space, Spin, Switch, Tabs, Tag, Typography, message,
 } from 'antd'
 import {
-  BellOutlined,
-  MinusCircleOutlined,
-  PlusOutlined,
-  SaveOutlined,
-  SettingOutlined,
+  BellOutlined, MinusCircleOutlined, PlusOutlined, SaveOutlined,
+  SettingOutlined, ApartmentOutlined, LockOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons'
-import {
-  getEnvironmentSettings,
-  saveEnvironmentSettings,
-} from '../../api/environmentSettings'
-import {
-  getMetadataDefinitions,
-  type MetadataDefinitionListItem,
-} from '../../api/metadataDefinitions'
+import { getEnvironmentSettings, saveEnvironmentSettings } from '../../api/environmentSettings'
+import { getMetadataDefinitions, type MetadataDefinitionListItem } from '../../api/metadataDefinitions'
 import { useAuthStore } from '../../store/authStore'
 import type { EnvironmentSettings, CodingRulePart } from '../../types/environmentSettings'
 import { WorkflowsPage } from '../Workflows/WorkflowsPage'
 import { NotificationTemplatesPage } from '../Notifications/NotificationTemplatesPage'
+import { mockApi } from '../../api/mockApi'
+import type { User as MockUser, OrganizationGroup, Process } from '../../api/mockData'
 
 const { Title, Text } = Typography
 
+type ProcessFormValues = {
+  name: string
+  code: string
+  description?: string
+  parentProcessId?: string | null
+  permissions: { userIds: string[]; groupIds: string[] }
+  isActive: boolean
+}
+
 const DEFAULT_VALUES: EnvironmentSettings = {
-  revision: {
-    pattern: 'numeric',
-    initialValue: '00',
-    autoIncrementOnApproval: true,
-    allowManualEdition: false,
-  },
-  creationMode: {
-    mode: 'both',
-    requireTemplateInBatch: true,
-  },
+  revision: { pattern: 'numeric', initialValue: '00', autoIncrementOnApproval: true, allowManualEdition: false },
+  creationMode: { mode: 'both', requireTemplateInBatch: true },
   codingRule: {
     parts: [
       { type: 'fixed', fixedValue: 'DOC', separatorAfter: '-' },
@@ -59,98 +38,213 @@ const DEFAULT_VALUES: EnvironmentSettings = {
       { type: 'sequential', separatorAfter: '' },
     ],
   },
-  sequential: {
-    startAt: 1,
-    digits: 4,
-    resetPeriod: 'yearly',
-  },
-  deadlines: {
-    totalProcessDays: 15,
-  },
+  sequential: { startAt: 1, digits: 4, resetPeriod: 'yearly' },
+  deadlines: { totalProcessDays: 15 },
 }
 
-function normalizeSettings(values?: Partial<EnvironmentSettings> | null): EnvironmentSettings {
+function normalizeSettings(v?: Partial<EnvironmentSettings> | null): EnvironmentSettings {
   return {
-    revision: {
-      ...DEFAULT_VALUES.revision,
-      ...(values?.revision ?? {}),
-    },
-    creationMode: {
-      ...DEFAULT_VALUES.creationMode,
-      ...(values?.creationMode ?? {}),
-    },
+    revision:     { ...DEFAULT_VALUES.revision,     ...(v?.revision     ?? {}) },
+    creationMode: { ...DEFAULT_VALUES.creationMode, ...(v?.creationMode ?? {}) },
     codingRule: {
-      parts:
-        values?.codingRule?.parts?.length
-          ? values.codingRule.parts.map(part => ({
-              ...part,
-              separatorAfter: part.separatorAfter ?? '',
-            }))
-          : DEFAULT_VALUES.codingRule.parts,
+      parts: v?.codingRule?.parts?.length
+        ? v.codingRule.parts.map((p) => ({ ...p, separatorAfter: p.separatorAfter ?? '' }))
+        : DEFAULT_VALUES.codingRule.parts,
     },
-    sequential: {
-      ...DEFAULT_VALUES.sequential,
-      ...(values?.sequential ?? {}),
-    },
-    deadlines: {
-      ...DEFAULT_VALUES.deadlines,
-      ...(values?.deadlines ?? {}),
-    },
+    sequential: { ...DEFAULT_VALUES.sequential, ...(v?.sequential ?? {}) },
+    deadlines:  { ...DEFAULT_VALUES.deadlines,  ...(v?.deadlines  ?? {}) },
   }
 }
 
-function buildPartPreview(
-  part: CodingRulePart,
-  metadataDefinitions: MetadataDefinitionListItem[],
-  settings: EnvironmentSettings,
-) {
+function buildPartPreview(part: CodingRulePart, defs: MetadataDefinitionListItem[], s: EnvironmentSettings): string {
   switch (part.type) {
-    case 'fixed':
-      return part.fixedValue?.trim() || 'FIXO'
-    case 'metadata': {
-      const metadata =
-        metadataDefinitions.find(item => item.id === part.metadataDefinitionId) ?? null
-      return `{${part.metadataLabel || metadata?.label || metadata?.name || 'METADADO'}}`
-    }
-    case 'year':
-      return '2026'
-    case 'unit':
-      return 'UN'
-    case 'area':
-      return 'AREA'
-    case 'process':
-      return 'PROC'
-    case 'sequential':
-      return String(settings.sequential.startAt).padStart(settings.sequential.digits, '0')
-    default:
-      return ''
+    case 'fixed':      return part.fixedValue?.trim() || 'FIXO'
+    case 'metadata': { const m = defs.find((i) => i.id === part.metadataDefinitionId); return `{${part.metadataLabel || m?.label || m?.name || 'METADADO'}}` }
+    case 'year':       return '2026'
+    case 'unit':       return 'UN'
+    case 'area':       return 'AREA'
+    case 'process':    return 'PROC'
+    case 'sequential': return String(s.sequential.startAt).padStart(s.sequential.digits, '0')
+    default:           return ''
   }
 }
 
-function buildCodePreview(
-  values: EnvironmentSettings,
-  metadataDefinitions: MetadataDefinitionListItem[],
-) {
-  return values.codingRule.parts
-    .map(part => {
-      const value = buildPartPreview(part, metadataDefinitions, values)
-      const separator = part.separatorAfter ?? ''
-      return `${value}${separator}`
-    })
-    .join('')
+function buildCodePreview(v: EnvironmentSettings, defs: MetadataDefinitionListItem[]) {
+  return v.codingRule.parts.map((p) => `${buildPartPreview(p, defs, v)}${p.separatorAfter ?? ''}`).join('')
 }
 
-export function EnvironmentSettingsPage() {
-  const [form] = Form.useForm<EnvironmentSettings>()
-  const [activeTab, setActiveTab] = useState('environment')
-  const user = useAuthStore(s => s.user)
+function resolveAccountId(user: { accountId?: string; tenantId?: string } | null): string {
+  return user?.accountId ?? user?.tenantId ?? ''
+}
 
-  const tenantId = user?.tenantId
+// ─── ProcessTab ───────────────────────────────────────────────────────────────
+
+function ProcessTab({ accountId, processId }: { accountId: string; processId?: string }) {
+  const [form]    = Form.useForm<ProcessFormValues>()
+  const [saving, setSaving] = useState(false)
+  const isEditing = !!processId
+  const queryClient = useQueryClient()
+
+  const { data: existingProcess, isLoading: loadingProcess } = useQuery<Process | null>({
+    queryKey: ['process', processId],
+    queryFn: async () => {
+      const all = await mockApi.get<Process[]>(`/processes?accountId=${accountId}`)
+      return all.find((p) => p.id === processId) ?? null
+    },
+    enabled: !!processId,
+  })
+
+  useEffect(() => {
+    if (existingProcess) {
+      form.setFieldsValue({
+        name: existingProcess.name, code: existingProcess.code,
+        description: existingProcess.description, isActive: existingProcess.isActive,
+        parentProcessId: null, permissions: { userIds: [], groupIds: [] },
+      })
+    }
+  }, [existingProcess, form])
+
+  const { data: mockUsers = [] } = useQuery<MockUser[]>({
+    queryKey: ['mock-users', accountId],
+    queryFn: () => mockApi.get<MockUser[]>(`/users?accountId=${accountId}`),
+    enabled: !!accountId,
+  })
+  const { data: groups = [] } = useQuery<OrganizationGroup[]>({
+    queryKey: ['organizationGroups', accountId],
+    queryFn: () => mockApi.get<OrganizationGroup[]>(`/organizationGroups?accountId=${accountId}`),
+    enabled: !!accountId,
+  })
+  const { data: processes = [] } = useQuery<Process[]>({
+    queryKey: ['processes', accountId],
+    queryFn: () => mockApi.get<Process[]>(`/processes?accountId=${accountId}`),
+    enabled: !!accountId,
+  })
+
+  const userOptions = useMemo(() =>
+    mockUsers.filter((u) => u.isActive).map((u) => ({
+      value: u.id,
+      label: <Space size={6}><UserOutlined style={{ color: '#94a3b8' }} /><span>{u.name}</span><Text type="secondary" style={{ fontSize: 11 }}>{u.jobTitle}</Text></Space>,
+      search: `${u.name} ${u.email} ${u.jobTitle}`.toLowerCase(),
+    })), [mockUsers])
+
+  const groupOptions = useMemo(() =>
+    groups.filter((g) => g.isActive).map((g) => ({
+      value: g.id,
+      label: <Space size={6}><TeamOutlined style={{ color: '#94a3b8' }} /><span>{g.name}</span>{g.code && <Tag style={{ fontSize: 10, lineHeight: '16px' }}>{g.code}</Tag>}</Space>,
+      search: `${g.name} ${g.code ?? ''}`.toLowerCase(),
+    })), [groups])
+
+  const processOptions = useMemo(() =>
+    processes.filter((p) => p.isActive && p.id !== processId)
+      .map((p) => ({ value: p.id, label: `${p.name} (${p.code})` })), [processes, processId])
+
+  const handleSubmit = async (values: ProcessFormValues) => {
+    setSaving(true)
+    try {
+      if (isEditing) {
+        await mockApi.patch(`/processes/${processId}`, { ...values, accountId })
+        message.success('Processo atualizado com sucesso.')
+      } else {
+        await mockApi.post('/processes', { ...values, accountId })
+        message.success('Processo criado com sucesso.')
+        form.resetFields()
+      }
+      // Invalida a query da sidebar para que o novo processo apareça imediatamente
+      await queryClient.invalidateQueries({ queryKey: ['sidebar-processes', accountId] })
+    } catch {
+      message.error(`Não foi possível ${isEditing ? 'atualizar' : 'criar'} o processo.`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loadingProcess) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin /></div>
+
+  return (
+    <Form<ProcessFormValues> form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ isActive: true, permissions: { userIds: [], groupIds: [] } }}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24}>
+          <Card title={<Space><ApartmentOutlined /><span>Identificação do processo</span></Space>}>
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item label="Nome" name="name" rules={[{ required: true, message: 'Informe o nome' }]}>
+                  <Input placeholder="Ex.: Contratos Corporativos" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item label="Código" name="code" rules={[{ required: true, message: 'Informe o código' }]} extra="Identificador curto, sem espaços.">
+                  <Input placeholder="Ex.: CTR-CORP" style={{ textTransform: 'uppercase' }} onChange={(e) => form.setFieldValue('code', e.target.value.toUpperCase())} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item label="Status" name="isActive" valuePropName="checked" extra="Desativar impede criação de documentos.">
+                  <Switch checkedChildren="Ativo" unCheckedChildren="Inativo" />
+                </Form.Item>
+              </Col>
+              <Col xs={24}>
+                <Form.Item label="Descrição" name="description">
+                  <Input.TextArea rows={3} placeholder="Descreva o propósito e escopo deste processo..." style={{ borderRadius: 8 }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label="Processo pai" name="parentProcessId" extra="Opcional. Define hierarquia entre processos.">
+                  <Select allowClear showSearch placeholder="Selecione um processo pai (opcional)" options={processOptions} optionFilterProp="label" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+        </Col>
+
+        <Col xs={24}>
+          <Card
+            title={<Space><LockOutlined /><span>Permissões de acesso</span></Space>}
+            extra={<Text type="secondary" style={{ fontSize: 12 }}>Quem pode visualizar e operar neste processo</Text>}
+          >
+            <Alert type="info" showIcon message="Deixe ambos os campos vazios para permitir acesso a todos os usuários da conta." style={{ marginBottom: 16, borderRadius: 8 }} />
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item label={<Space size={4}><UserOutlined /><span>Usuários com acesso</span></Space>} name={['permissions', 'userIds']}>
+                  <Select mode="multiple" allowClear showSearch placeholder="Selecione usuários" options={userOptions} filterOption={(input, opt) => String(opt?.search ?? '').includes(input.toLowerCase())} optionLabelProp="label" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={<Space size={4}><TeamOutlined /><span>Grupos com acesso</span></Space>} name={['permissions', 'groupIds']}>
+                  <Select mode="multiple" allowClear showSearch placeholder="Selecione grupos" options={groupOptions} filterOption={(input, opt) => String(opt?.search ?? '').includes(input.toLowerCase())} optionLabelProp="label" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+        </Col>
+      </Row>
+
+      <Divider />
+      <Space>
+        <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} style={{ background: '#0f172a', borderColor: '#0f172a' }}>
+          {isEditing ? 'Salvar alterações' : 'Criar processo'}
+        </Button>
+        {!isEditing && <Button onClick={() => form.resetFields()}>Limpar</Button>}
+      </Space>
+    </Form>
+  )
+}
+
+// ─── EnvironmentSettingsPage ──────────────────────────────────────────────────
+
+type EnvironmentSettingsPageProps = {
+  processId?: string
+}
+
+export function EnvironmentSettingsPage({ processId }: EnvironmentSettingsPageProps) {
+  const [form]       = Form.useForm<EnvironmentSettings>()
+  const [activeTab, setActiveTab] = useState('process')
+  const user         = useAuthStore((s) => s.user)
+  const accountId    = resolveAccountId(user)
+  const isEditing    = !!processId
 
   const { data, isLoading } = useQuery<EnvironmentSettings>({
-    queryKey: ['environment-settings', tenantId],
-    queryFn: () => getEnvironmentSettings(tenantId as string),
-    enabled: !!tenantId,
+    queryKey: ['environment-settings', accountId],
+    queryFn: () => getEnvironmentSettings(accountId),
+    enabled: !!accountId,
   })
 
   const { data: metadataDefinitions = [] } = useQuery<MetadataDefinitionListItem[]>({
@@ -159,528 +253,208 @@ export function EnvironmentSettingsPage() {
   })
 
   const saveMutation = useMutation({
-    mutationFn: (values: EnvironmentSettings) =>
-      saveEnvironmentSettings(tenantId as string, values),
-    onSuccess: saved => {
-      form.setFieldsValue(normalizeSettings(saved))
-      message.success('Configurações salvas com sucesso.')
-    },
-    onError: () => {
-      message.error('Não foi possível salvar as configurações.')
-    },
+    mutationFn: (v: EnvironmentSettings) => saveEnvironmentSettings(accountId, v),
+    onSuccess: (saved) => { form.setFieldsValue(normalizeSettings(saved)); message.success('Configurações salvas com sucesso.') },
+    onError: () => message.error('Não foi possível salvar as configurações.'),
   })
 
-  useEffect(() => {
-    form.setFieldsValue(normalizeSettings(data))
-  }, [data, form])
+  useEffect(() => { form.setFieldsValue(normalizeSettings(data)) }, [data, form])
 
-  const watchedValues = Form.useWatch([], form)
+  const watchedValues   = Form.useWatch([], form)
+  const safeValues      = useMemo(() => normalizeSettings(watchedValues as Partial<EnvironmentSettings> | undefined), [watchedValues])
+  const previewCode     = useMemo(() => buildCodePreview(safeValues, metadataDefinitions), [safeValues, metadataDefinitions])
+  const hasSequential   = useMemo(() => safeValues.codingRule.parts.some((p) => p.type === 'sequential'), [safeValues])
+  const metadataOptions = useMemo(() => metadataDefinitions.map((i) => ({ label: i.label || i.name, value: i.id })), [metadataDefinitions])
 
-  const safeValues = useMemo(
-    () => normalizeSettings(watchedValues as Partial<EnvironmentSettings> | undefined),
-    [watchedValues],
-  )
-
-  const previewCode = useMemo(() => {
-    return buildCodePreview(safeValues, metadataDefinitions)
-  }, [safeValues, metadataDefinitions])
-
-  const hasSequentialPart = useMemo(() => {
-    return safeValues.codingRule.parts.some(part => part.type === 'sequential')
-  }, [safeValues])
-
-  const metadataOptions = useMemo(
-    () =>
-      metadataDefinitions.map(item => ({
-        label: item.label || item.name,
-        value: item.id,
-      })),
-    [metadataDefinitions],
-  )
-
-  const handleRevisionPatternChange = (
-    value: 'numeric' | 'alphabetic' | 'alphanumeric',
-  ) => {
-    const currentInitialValue = form.getFieldValue(['revision', 'initialValue'])
-
-    if (
-      !currentInitialValue ||
-      currentInitialValue === '00' ||
-      currentInitialValue === 'AA' ||
-      currentInitialValue === 'A1'
-    ) {
-      const nextValue =
-        value === 'alphabetic' ? 'AA' : value === 'alphanumeric' ? 'A1' : '00'
-
-      form.setFieldValue(['revision', 'initialValue'], nextValue)
+  const handleRevisionPatternChange = (value: 'numeric' | 'alphabetic' | 'alphanumeric') => {
+    const cur = form.getFieldValue(['revision', 'initialValue'])
+    if (!cur || ['00', 'AA', 'A1'].includes(cur)) {
+      form.setFieldValue(['revision', 'initialValue'], value === 'alphabetic' ? 'AA' : value === 'alphanumeric' ? 'A1' : '00')
     }
   }
 
   const handleSubmit = async (values: EnvironmentSettings) => {
-    if (!tenantId) {
-      message.error('Tenant não encontrado para o usuário logado.')
-      return
-    }
-
+    if (!accountId) { message.error('Conta não identificada.'); return }
     const normalized = normalizeSettings(values)
-
-    normalized.codingRule.parts = normalized.codingRule.parts.map(part => {
-      if (part.type !== 'metadata') return part
-
-      const metadata =
-        metadataDefinitions.find(item => item.id === part.metadataDefinitionId) ?? null
-
-      return {
-        ...part,
-        metadataLabel: metadata?.label || metadata?.name || 'METADADO',
-      }
+    normalized.codingRule.parts = normalized.codingRule.parts.map((p) => {
+      if (p.type !== 'metadata') return p
+      const meta = metadataDefinitions.find((i) => i.id === p.metadataDefinitionId)
+      return { ...p, metadataLabel: meta?.label || meta?.name || 'METADADO' }
     })
-
     await saveMutation.mutateAsync(normalized)
   }
 
-  if (!tenantId) {
-    return (
-      <Alert
-        type="error"
-        showIcon
-        message="Não foi possível identificar a organização do usuário logado."
-      />
-    )
-  }
-
-  if (isLoading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-        <Spin size="large" />
-      </div>
-    )
-  }
+  if (!accountId) return <Alert type="error" showIcon message="Não foi possível identificar a conta do usuário logado." />
+  if (isLoading)  return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin size="large" /></div>
 
   return (
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
       <div>
         <Title level={3} style={{ marginBottom: 4 }}>
-          <SettingOutlined /> Configurações do ambiente
+          <SettingOutlined /> {isEditing ? 'Configurações do processo' : 'Novo processo'}
         </Title>
         <Text type="secondary">
-          Gerencie regras globais do ambiente, workflows e notificações do sistema.
+          {isEditing
+            ? 'Edite as informações, permissões e o workflow vinculado a este processo.'
+            : 'Configure as informações e permissões do novo processo.'}
         </Text>
       </div>
 
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={[
-          {
-            key: 'environment',
-            label: 'Configurações de ambiente',
-            children: (
-              <>
-                <Alert
-                  type="info"
-                  showIcon
-                  message="Estas configurações impactam a forma como documentos e processos serão criados no ambiente."
-                  style={{ marginBottom: 16 }}
-                />
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+        // 1. Dados do processo
+        {
+          key: 'process',
+          label: <Space size={6}><ApartmentOutlined /><span>{isEditing ? 'Dados do processo' : 'Novo processo'}</span></Space>,
+          children: <ProcessTab accountId={accountId} processId={processId} />,
+        },
 
-                <Form<EnvironmentSettings>
-                  form={form}
-                  layout="vertical"
-                  onFinish={handleSubmit}
-                  initialValues={DEFAULT_VALUES}
-                >
-                  <Row gutter={[16, 16]}>
-                    <Col xs={24} xl={12}>
-                      <Card title="Revisão">
-                        <Row gutter={16}>
-                          <Col span={24}>
-                            <Form.Item
-                              label="Padrão de revisão"
-                              name={['revision', 'pattern']}
-                              rules={[{ required: true, message: 'Selecione o padrão de revisão' }]}
-                            >
-                              <Radio.Group
-                                onChange={e => handleRevisionPatternChange(e.target.value)}
-                              >
-                                <Radio value="numeric">Numérica</Radio>
-                                <Radio value="alphabetic">Alfabética</Radio>
-                                <Radio value="alphanumeric">Alfanumérica</Radio>
-                              </Radio.Group>
-                            </Form.Item>
-                          </Col>
+        // 2. Workflow — só em modo edição
+        ...(isEditing ? [{
+          key: 'workflow',
+          label: 'Workflow',
+          children: <WorkflowsPage embedded processId={processId} />,
+        }] : []),
 
-                          <Col xs={24} md={12}>
-                            <Form.Item noStyle shouldUpdate>
-                              {({ getFieldValue }) => {
-                                const pattern = getFieldValue(['revision', 'pattern']) as
-                                  | 'numeric'
-                                  | 'alphabetic'
-                                  | 'alphanumeric'
-                                  | undefined
-
-                                const placeholder =
-                                  pattern === 'alphabetic'
-                                    ? 'Ex: AA'
-                                    : pattern === 'alphanumeric'
-                                      ? 'Ex: A1'
-                                      : 'Ex: 00'
-
-                                return (
-                                  <Form.Item
-                                    label="Valor inicial"
-                                    name={['revision', 'initialValue']}
-                                    rules={[
-                                      { required: true, message: 'Informe o valor inicial' },
-                                    ]}
-                                  >
-                                    <Input placeholder={placeholder} />
-                                  </Form.Item>
-                                )
-                              }}
-                            </Form.Item>
-                          </Col>
-
-                          <Col xs={24} md={12}>
-                            <Form.Item
-                              label="Incrementar ao aprovar"
-                              name={['revision', 'autoIncrementOnApproval']}
-                              valuePropName="checked"
-                            >
-                              <Switch />
-                            </Form.Item>
-                          </Col>
-
-                          <Col span={24}>
-                            <Form.Item
-                              label="Permitir edição manual da revisão"
-                              name={['revision', 'allowManualEdition']}
-                              valuePropName="checked"
-                            >
-                              <Switch />
-                            </Form.Item>
-                          </Col>
-                        </Row>
-                      </Card>
-                    </Col>
-
-                    <Col xs={24} xl={12}>
-                      <Card title="Modo de criação">
-                        <Row gutter={16}>
-                          <Col span={24}>
-                            <Form.Item
-                              label="Forma de criação"
-                              name={['creationMode', 'mode']}
-                              rules={[{ required: true, message: 'Selecione o modo de criação' }]}
-                            >
-                              <Radio.Group>
-                                <Radio value="manual">Somente manual</Radio>
-                                <Radio value="batch">Somente em lote</Radio>
-                                <Radio value="both">Manual e em lote</Radio>
-                              </Radio.Group>
-                            </Form.Item>
-                          </Col>
-
-                          <Col span={24}>
-                            <Form.Item
-                              label="Exigir template na criação em lote"
-                              name={['creationMode', 'requireTemplateInBatch']}
-                              valuePropName="checked"
-                            >
-                              <Switch />
-                            </Form.Item>
-                          </Col>
-                        </Row>
-                      </Card>
-                    </Col>
-
-                    <Col xs={24}>
-                      <Card title="Regra de codificação">
-                        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                          <div
-                            style={{
-                              padding: 12,
-                              borderRadius: 12,
-                              background: '#fafafa',
-                              border: '1px solid #f0f0f0',
-                            }}
-                          >
-                            <Text type="secondary">Exemplo do código gerado:</Text>
-                            <div style={{ marginTop: 4 }}>
-                              <Text strong style={{ fontSize: 16 }}>
-                                {previewCode || '—'}
-                              </Text>
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '180px minmax(220px, 1fr) 180px 90px',
-                              gap: 12,
-                              padding: '0 4px',
-                              fontSize: 12,
-                              fontWeight: 600,
-                              color: '#8c8c8c',
-                            }}
-                          >
-                            <div>Tipo</div>
-                            <div>Valor</div>
-                            <div>Separador após</div>
-                            <div>Ações</div>
-                          </div>
-
-                          <Form.List name={['codingRule', 'parts']}>
-                            {(fields, { add, remove }) => (
-                              <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                                {fields.map(field => (
-                                  <div
-                                    key={field.key}
-                                    style={{
-                                      display: 'grid',
-                                      gridTemplateColumns:
-                                        '180px minmax(220px, 1fr) 180px 90px',
-                                      gap: 12,
-                                      alignItems: 'start',
-                                      padding: 12,
-                                      border: '1px solid #f0f0f0',
-                                      borderRadius: 12,
-                                      background: '#fff',
-                                    }}
-                                  >
-                                    <Form.Item
-                                      name={[field.name, 'type']}
-                                      rules={[{ required: true, message: 'Selecione o tipo' }]}
-                                      style={{ marginBottom: 0 }}
-                                    >
-                                      <Select
-                                        placeholder="Tipo"
-                                        options={[
-                                          { label: 'Valor fixo', value: 'fixed' },
-                                          { label: 'Metadado', value: 'metadata' },
-                                          { label: 'Ano', value: 'year' },
-                                          { label: 'Unidade', value: 'unit' },
-                                          { label: 'Área', value: 'area' },
-                                          { label: 'Processo', value: 'process' },
-                                          { label: 'Sequencial', value: 'sequential' },
-                                        ]}
-                                      />
-                                    </Form.Item>
-
-                                    <Form.Item
-                                      noStyle
-                                      shouldUpdate={(prev, curr) =>
-                                        prev?.codingRule?.parts?.[field.name]?.type !==
-                                        curr?.codingRule?.parts?.[field.name]?.type
-                                      }
-                                    >
-                                      {({ getFieldValue }) => {
-                                        const type = getFieldValue([
-                                          'codingRule',
-                                          'parts',
-                                          field.name,
-                                          'type',
-                                        ])
-
-                                        if (type === 'fixed') {
-                                          return (
-                                            <Form.Item
-                                              name={[field.name, 'fixedValue']}
-                                              rules={[
-                                                {
-                                                  required: true,
-                                                  message: 'Informe o valor fixo',
-                                                },
-                                              ]}
-                                              style={{ marginBottom: 0 }}
-                                            >
-                                              <Input placeholder="Ex: DOC, ENG, FOR..." />
-                                            </Form.Item>
-                                          )
-                                        }
-
-                                        if (type === 'metadata') {
-                                          return (
-                                            <Form.Item
-                                              name={[field.name, 'metadataDefinitionId']}
-                                              rules={[
-                                                {
-                                                  required: true,
-                                                  message: 'Selecione o metadado',
-                                                },
-                                              ]}
-                                              style={{ marginBottom: 0 }}
-                                            >
-                                              <Select
-                                                placeholder="Selecione um metadado"
-                                                options={metadataOptions}
-                                              />
-                                            </Form.Item>
-                                          )
-                                        }
-
-                                        return (
-                                          <Input
-                                            disabled
-                                            value="Preenchimento automático"
-                                            style={{ width: '100%' }}
-                                          />
-                                        )
-                                      }}
-                                    </Form.Item>
-
-                                    <Form.Item
-                                      name={[field.name, 'separatorAfter']}
-                                      style={{ marginBottom: 0 }}
-                                    >
-                                      <Select
-                                        placeholder="Separador"
-                                        options={[
-                                          { label: 'Sem separador', value: '' },
-                                          { label: '-', value: '-' },
-                                          { label: '/', value: '/' },
-                                          { label: '.', value: '.' },
-                                        ]}
-                                      />
-                                    </Form.Item>
-
-                                    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                                      <Button
-                                        danger
-                                        type="text"
-                                        icon={<MinusCircleOutlined />}
-                                        onClick={() => remove(field.name)}
-                                      >
-                                        Remover
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ))}
-
-                                <Button
-                                  type="dashed"
-                                  icon={<PlusOutlined />}
-                                  onClick={() =>
-                                    add({
-                                      type: 'fixed',
-                                      fixedValue: '',
-                                      separatorAfter: '',
-                                    })
-                                  }
-                                  block
-                                >
-                                  Adicionar tópico
-                                </Button>
-                              </Space>
+        // 3. Configurações
+        {
+          key: 'environment',
+          label: 'Configurações',
+          children: (
+            <>
+              <Alert type="info" showIcon message="Estas configurações impactam a forma como documentos e processos serão criados." style={{ marginBottom: 16 }} />
+              <Form<EnvironmentSettings> form={form} layout="vertical" onFinish={handleSubmit} initialValues={DEFAULT_VALUES}>
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} xl={12}>
+                    <Card title="Revisão">
+                      <Row gutter={16}>
+                        <Col span={24}>
+                          <Form.Item label="Padrão de revisão" name={['revision', 'pattern']} rules={[{ required: true }]}>
+                            <Radio.Group onChange={(e) => handleRevisionPatternChange(e.target.value)}>
+                              <Radio value="numeric">Numérica</Radio>
+                              <Radio value="alphabetic">Alfabética</Radio>
+                              <Radio value="alphanumeric">Alfanumérica</Radio>
+                            </Radio.Group>
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item noStyle shouldUpdate>
+                            {({ getFieldValue }) => (
+                              <Form.Item label="Valor inicial" name={['revision', 'initialValue']} rules={[{ required: true }]}>
+                                <Input placeholder={getFieldValue(['revision', 'pattern']) === 'alphabetic' ? 'Ex: AA' : getFieldValue(['revision', 'pattern']) === 'alphanumeric' ? 'Ex: A1' : 'Ex: 00'} />
+                              </Form.Item>
                             )}
-                          </Form.List>
-                        </Space>
-                      </Card>
-                    </Col>
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={12}><Form.Item label="Incrementar ao aprovar" name={['revision', 'autoIncrementOnApproval']} valuePropName="checked"><Switch /></Form.Item></Col>
+                        <Col span={24}><Form.Item label="Permitir edição manual da revisão" name={['revision', 'allowManualEdition']} valuePropName="checked"><Switch /></Form.Item></Col>
+                      </Row>
+                    </Card>
+                  </Col>
 
-                    {hasSequentialPart && (
-                      <Col xs={24} xl={12}>
-                        <Card title="Sequencial">
-                          <Row gutter={16}>
-                            <Col xs={24} md={8}>
-                              <Form.Item
-                                label="Iniciar em"
-                                name={['sequential', 'startAt']}
-                                rules={[{ required: true, message: 'Informe o início' }]}
-                              >
-                                <InputNumber min={1} style={{ width: '100%' }} />
-                              </Form.Item>
-                            </Col>
+                  <Col xs={24} xl={12}>
+                    <Card title="Modo de criação">
+                      <Row gutter={16}>
+                        <Col span={24}>
+                          <Form.Item label="Forma de criação" name={['creationMode', 'mode']} rules={[{ required: true }]}>
+                            <Radio.Group>
+                              <Radio value="manual">Somente manual</Radio>
+                              <Radio value="batch">Somente em lote</Radio>
+                              <Radio value="both">Manual e em lote</Radio>
+                            </Radio.Group>
+                          </Form.Item>
+                        </Col>
+                        <Col span={24}><Form.Item label="Exigir template na criação em lote" name={['creationMode', 'requireTemplateInBatch']} valuePropName="checked"><Switch /></Form.Item></Col>
+                      </Row>
+                    </Card>
+                  </Col>
 
-                            <Col xs={24} md={8}>
-                              <Form.Item
-                                label="Quantidade de dígitos"
-                                name={['sequential', 'digits']}
-                                rules={[{ required: true, message: 'Informe os dígitos' }]}
-                              >
-                                <InputNumber min={1} max={10} style={{ width: '100%' }} />
-                              </Form.Item>
-                            </Col>
+                  <Col xs={24}>
+                    <Card title="Regra de codificação">
+                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                        <div style={{ padding: 12, borderRadius: 12, background: '#fafafa', border: '1px solid #f0f0f0' }}>
+                          <Text type="secondary">Exemplo do código gerado:</Text>
+                          <div style={{ marginTop: 4 }}><Text strong style={{ fontSize: 16 }}>{previewCode || '—'}</Text></div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '180px minmax(220px, 1fr) 180px 90px', gap: 12, padding: '0 4px', fontSize: 12, fontWeight: 600, color: '#8c8c8c' }}>
+                          <div>Tipo</div><div>Valor</div><div>Separador após</div><div>Ações</div>
+                        </div>
+                        <Form.List name={['codingRule', 'parts']}>
+                          {(fields, { add, remove }) => (
+                            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                              {fields.map((field) => (
+                                <div key={field.key} style={{ display: 'grid', gridTemplateColumns: '180px minmax(220px, 1fr) 180px 90px', gap: 12, alignItems: 'start', padding: 12, border: '1px solid #f0f0f0', borderRadius: 12, background: '#fff' }}>
+                                  <Form.Item name={[field.name, 'type']} rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                                    <Select placeholder="Tipo" options={[
+                                      { label: 'Valor fixo', value: 'fixed' }, { label: 'Metadado', value: 'metadata' },
+                                      { label: 'Ano', value: 'year' }, { label: 'Unidade', value: 'unit' },
+                                      { label: 'Área', value: 'area' }, { label: 'Processo', value: 'process' },
+                                      { label: 'Sequencial', value: 'sequential' },
+                                    ]} />
+                                  </Form.Item>
+                                  <Form.Item noStyle shouldUpdate={(prev, curr) => prev?.codingRule?.parts?.[field.name]?.type !== curr?.codingRule?.parts?.[field.name]?.type}>
+                                    {({ getFieldValue }) => {
+                                      const type = getFieldValue(['codingRule', 'parts', field.name, 'type'])
+                                      if (type === 'fixed')    return <Form.Item name={[field.name, 'fixedValue']} rules={[{ required: true }]} style={{ marginBottom: 0 }}><Input placeholder="Ex: DOC, ENG..." /></Form.Item>
+                                      if (type === 'metadata') return <Form.Item name={[field.name, 'metadataDefinitionId']} rules={[{ required: true }]} style={{ marginBottom: 0 }}><Select placeholder="Selecione um metadado" options={metadataOptions} /></Form.Item>
+                                      return <Input disabled value="Preenchimento automático" style={{ width: '100%' }} />
+                                    }}
+                                  </Form.Item>
+                                  <Form.Item name={[field.name, 'separatorAfter']} style={{ marginBottom: 0 }}>
+                                    <Select placeholder="Separador" options={[{ label: 'Sem separador', value: '' }, { label: '-', value: '-' }, { label: '/', value: '/' }, { label: '.', value: '.' }]} />
+                                  </Form.Item>
+                                  <Button danger type="text" icon={<MinusCircleOutlined />} onClick={() => remove(field.name)}>Remover</Button>
+                                </div>
+                              ))}
+                              <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ type: 'fixed', fixedValue: '', separatorAfter: '' })} block>Adicionar parte</Button>
+                            </Space>
+                          )}
+                        </Form.List>
+                      </Space>
+                    </Card>
+                  </Col>
 
-                            <Col xs={24} md={8}>
-                              <Form.Item
-                                label="Reinício"
-                                name={['sequential', 'resetPeriod']}
-                                rules={[{ required: true, message: 'Selecione o reinício' }]}
-                              >
-                                <Select
-                                  options={[
-                                    { label: 'Nunca', value: 'never' },
-                                    { label: 'Anual', value: 'yearly' },
-                                    { label: 'Mensal', value: 'monthly' },
-                                  ]}
-                                />
-                              </Form.Item>
-                            </Col>
-                          </Row>
-                        </Card>
-                      </Col>
-                    )}
-
-                    <Col span={24}>
-                      <Card title="Prazo do processo">
+                  {hasSequential && (
+                    <Col xs={24} xl={12}>
+                      <Card title="Sequencial">
                         <Row gutter={16}>
-                          <Col xs={24} md={12} xl={8}>
-                            <Form.Item
-                              label="Prazo total para conclusão do processo"
-                              name={['deadlines', 'totalProcessDays']}
-                              rules={[{ required: true, message: 'Informe o prazo total' }]}
-                              extra="Tempo esperado para o documento chegar ao fim do processo."
-                            >
-                              <InputNumber
-                                min={0}
-                                style={{ width: '100%' }}
-                                addonAfter="dias"
-                              />
-                            </Form.Item>
-                          </Col>
+                          <Col xs={24} md={8}><Form.Item label="Iniciar em"  name={['sequential', 'startAt']}     rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col xs={24} md={8}><Form.Item label="Dígitos"     name={['sequential', 'digits']}      rules={[{ required: true }]}><InputNumber min={1} max={10} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col xs={24} md={8}><Form.Item label="Reinício"    name={['sequential', 'resetPeriod']} rules={[{ required: true }]}><Select options={[{ label: 'Nunca', value: 'never' }, { label: 'Anual', value: 'yearly' }, { label: 'Mensal', value: 'monthly' }]} /></Form.Item></Col>
                         </Row>
                       </Card>
                     </Col>
-                  </Row>
+                  )}
 
-                  <Divider />
+                  <Col span={24}>
+                    <Card title="Prazo do processo">
+                      <Row gutter={16}>
+                        <Col xs={24} md={12} xl={8}>
+                          <Form.Item label="Prazo total para conclusão" name={['deadlines', 'totalProcessDays']} rules={[{ required: true }]} extra="Tempo esperado para o documento chegar ao fim.">
+                            <InputNumber min={0} style={{ width: '100%' }} addonAfter="dias" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </Card>
+                  </Col>
+                </Row>
 
-                  <Space>
-                    <Button
-                      type="primary"
-                      htmlType="submit"
-                      icon={<SaveOutlined />}
-                      loading={saveMutation.isPending}
-                    >
-                      Salvar configurações
-                    </Button>
+                <Divider />
+                <Space>
+                  <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saveMutation.isPending}>Salvar configurações</Button>
+                  <Button onClick={() => form.setFieldsValue(DEFAULT_VALUES)}>Restaurar padrão</Button>
+                </Space>
+              </Form>
+            </>
+          ),
+        },
 
-                    <Button onClick={() => form.setFieldsValue(DEFAULT_VALUES)}>
-                      Restaurar padrão
-                    </Button>
-                  </Space>
-                </Form>
-              </>
-            ),
-          },
-          {
-            key: 'workflows',
-            label: 'Workflows',
-            children: <WorkflowsPage embedded />,
-          },
-          {
-            key: 'notifications',
-            label: (
-              <Space size={6}>
-                <BellOutlined />
-                <span>Notificações</span>
-              </Space>
-            ),
-            children: <NotificationTemplatesPage />,
-          },
-        ]}
-      />
+        // 4. Notificações
+        {
+          key: 'notifications',
+          label: <Space size={6}><BellOutlined /><span>Notificações</span></Space>,
+          children: <NotificationTemplatesPage />,
+        },
+      ]} />
     </Space>
   )
 }
