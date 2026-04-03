@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import {
   Alert, Button, Card, Empty, Form, Input, InputNumber, Select, Space, Typography,
 } from 'antd'
-import { ClockCircleOutlined, DatabaseOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { getMetadataDefinitions } from '../../../api/metadataDefinitions'
 import type { WorkflowElementConfig } from '../storage'

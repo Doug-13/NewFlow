@@ -22,7 +22,6 @@ import {
   Badge,
   Tooltip,
   Popover,
-  List,
 } from 'antd'
 import {
   UploadOutlined,
