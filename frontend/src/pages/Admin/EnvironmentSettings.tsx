@@ -6,7 +6,8 @@ import {
 } from 'antd'
 import {
   BellOutlined, MinusCircleOutlined, PlusOutlined, SaveOutlined,
-  SettingOutlined, ApartmentOutlined, LockOutlined, TeamOutlined, UserOutlined,
+  SettingOutlined, ApartmentOutlined, LockOutlined, TeamOutlined,
+  UserOutlined, EyeOutlined, FileAddOutlined,
 } from '@ant-design/icons'
 import { getEnvironmentSettings, saveEnvironmentSettings } from '../../api/environmentSettings'
 import { getMetadataDefinitions, type MetadataDefinitionListItem } from '../../api/metadataDefinitions'
@@ -15,17 +16,31 @@ import type { EnvironmentSettings, CodingRulePart } from '../../types/environmen
 import { WorkflowsPage } from '../Workflows/WorkflowsPage'
 import { NotificationTemplatesPage } from '../Notifications/NotificationTemplatesPage'
 import { mockApi } from '../../api/mockApi'
-import type { User as MockUser, OrganizationGroup, Process } from '../../api/mockData'
+import type { Process } from '../../api/mockData'
+import { getUsers } from '../../api/users'
+import { getOrgGroups, type OrgGroupDto } from '../../api/organization'
 
 const { Title, Text } = Typography
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type PermissionSet = {
+  userIds: string[]
+  groupIds: string[]
+}
 
 type ProcessFormValues = {
   name: string
   code: string
   description?: string
   parentProcessId?: string | null
-  permissions: { userIds: string[]; groupIds: string[] }
   isActive: boolean
+  /** Quem pode acessar o processo (geral) */
+  permissions: PermissionSet
+  /** Quem pode criar documentos neste processo */
+  documentCreation: PermissionSet
+  /** Quem pode visualizar documentos neste processo */
+  documentVisualization: PermissionSet
 }
 
 const DEFAULT_VALUES: EnvironmentSettings = {
@@ -77,6 +92,71 @@ function resolveAccountId(user: { accountId?: string; tenantId?: string } | null
   return user?.accountId ?? user?.tenantId ?? ''
 }
 
+// ─── Subcomponente: seletor de usuários + grupos ──────────────────────────────
+
+function PermissionSelector({
+  label,
+  icon,
+  description,
+  fieldPrefix,
+  userOptions,
+  groupOptions,
+}: {
+  label: string
+  icon: React.ReactNode
+  description: string
+  fieldPrefix: string
+  userOptions: { value: string; label: React.ReactNode; search: string }[]
+  groupOptions: { value: string; label: React.ReactNode; search: string }[]
+}) {
+  return (
+    <div style={{ padding: '16px', background: '#fafafa', borderRadius: 10, border: '1px solid #f0f0f0' }}>
+      <Space style={{ marginBottom: 12 }}>
+        {icon}
+        <div>
+          <Text strong style={{ fontSize: 13 }}>{label}</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>{description}</Text>
+        </div>
+      </Space>
+      <Row gutter={12}>
+        <Col xs={24} md={12}>
+          <Form.Item
+            label={<Space size={4}><UserOutlined style={{ fontSize: 12 }} /><span style={{ fontSize: 12 }}>Usuários</span></Space>}
+            name={[fieldPrefix, 'userIds']}
+            style={{ marginBottom: 0 }}
+          >
+            <Select
+              mode="multiple" allowClear showSearch
+              placeholder="Todos os usuários"
+              options={userOptions}
+              filterOption={(input, opt) => String(opt?.search ?? '').includes(input.toLowerCase())}
+              optionLabelProp="label"
+              size="small"
+            />
+          </Form.Item>
+        </Col>
+        <Col xs={24} md={12}>
+          <Form.Item
+            label={<Space size={4}><TeamOutlined style={{ fontSize: 12 }} /><span style={{ fontSize: 12 }}>Grupos</span></Space>}
+            name={[fieldPrefix, 'groupIds']}
+            style={{ marginBottom: 0 }}
+          >
+            <Select
+              mode="multiple" allowClear showSearch
+              placeholder="Todos os grupos"
+              options={groupOptions}
+              filterOption={(input, opt) => String(opt?.search ?? '').includes(input.toLowerCase())}
+              optionLabelProp="label"
+              size="small"
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+    </div>
+  )
+}
+
 // ─── ProcessTab ───────────────────────────────────────────────────────────────
 
 function ProcessTab({ accountId, processId }: { accountId: string; processId?: string }) {
@@ -84,6 +164,8 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
   const [saving, setSaving] = useState(false)
   const isEditing = !!processId
   const queryClient = useQueryClient()
+
+  const emptyPermission: PermissionSet = { userIds: [], groupIds: [] }
 
   const { data: existingProcess, isLoading: loadingProcess } = useQuery<Process | null>({
     queryKey: ['process', processId],
@@ -97,22 +179,26 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
   useEffect(() => {
     if (existingProcess) {
       form.setFieldsValue({
-        name: existingProcess.name, code: existingProcess.code,
-        description: existingProcess.description, isActive: existingProcess.isActive,
-        parentProcessId: null, permissions: { userIds: [], groupIds: [] },
+        name:                  existingProcess.name,
+        code:                  existingProcess.code,
+        description:           existingProcess.description,
+        isActive:              existingProcess.isActive,
+        parentProcessId:       null,
+        permissions:           (existingProcess as any).permissions           ?? emptyPermission,
+        documentCreation:      (existingProcess as any).documentCreation      ?? emptyPermission,
+        documentVisualization: (existingProcess as any).documentVisualization ?? emptyPermission,
       })
     }
   }, [existingProcess, form])
 
-  const { data: mockUsers = [] } = useQuery<MockUser[]>({
-    queryKey: ['mock-users', accountId],
-    queryFn: () => mockApi.get<MockUser[]>(`/users?accountId=${accountId}`),
-    enabled: !!accountId,
+  // Usa a API real — mesma fonte que UsersPage e OrganizationPage
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: getUsers,
   })
-  const { data: groups = [] } = useQuery<OrganizationGroup[]>({
-    queryKey: ['organizationGroups', accountId],
-    queryFn: () => mockApi.get<OrganizationGroup[]>(`/organizationGroups?accountId=${accountId}`),
-    enabled: !!accountId,
+  const { data: groups = [] } = useQuery<OrgGroupDto[]>({
+    queryKey: ['org-groups'],
+    queryFn: getOrgGroups,
   })
   const { data: processes = [] } = useQuery<Process[]>({
     queryKey: ['processes', accountId],
@@ -121,16 +207,28 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
   })
 
   const userOptions = useMemo(() =>
-    mockUsers.filter((u) => u.isActive).map((u) => ({
+    (allUsers as any[]).filter((u: any) => u.isActive).map((u: any) => ({
       value: u.id,
-      label: <Space size={6}><UserOutlined style={{ color: '#94a3b8' }} /><span>{u.name}</span><Text type="secondary" style={{ fontSize: 11 }}>{u.jobTitle}</Text></Space>,
+      label: (
+        <Space size={6}>
+          <UserOutlined style={{ color: '#94a3b8' }} />
+          <span>{u.name}</span>
+          <Text type="secondary" style={{ fontSize: 11 }}>{u.jobTitle}</Text>
+        </Space>
+      ),
       search: `${u.name} ${u.email} ${u.jobTitle}`.toLowerCase(),
-    })), [mockUsers])
+    })), [allUsers])
 
   const groupOptions = useMemo(() =>
-    groups.filter((g) => g.isActive).map((g) => ({
+    (groups as OrgGroupDto[]).filter((g) => g.isActive).map((g) => ({
       value: g.id,
-      label: <Space size={6}><TeamOutlined style={{ color: '#94a3b8' }} /><span>{g.name}</span>{g.code && <Tag style={{ fontSize: 10, lineHeight: '16px' }}>{g.code}</Tag>}</Space>,
+      label: (
+        <Space size={6}>
+          <TeamOutlined style={{ color: '#94a3b8' }} />
+          <span>{g.name}</span>
+          {g.code && <Tag style={{ fontSize: 10, lineHeight: '16px' }}>{g.code}</Tag>}
+        </Space>
+      ),
       search: `${g.name} ${g.code ?? ''}`.toLowerCase(),
     })), [groups])
 
@@ -149,7 +247,6 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
         message.success('Processo criado com sucesso.')
         form.resetFields()
       }
-      // Invalida a query da sidebar para que o novo processo apareça imediatamente
       await queryClient.invalidateQueries({ queryKey: ['sidebar-processes', accountId] })
     } catch {
       message.error(`Não foi possível ${isEditing ? 'atualizar' : 'criar'} o processo.`)
@@ -161,8 +258,19 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
   if (loadingProcess) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin /></div>
 
   return (
-    <Form<ProcessFormValues> form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ isActive: true, permissions: { userIds: [], groupIds: [] } }}>
+    <Form<ProcessFormValues>
+      form={form}
+      layout="vertical"
+      onFinish={handleSubmit}
+      initialValues={{
+        isActive: true,
+        permissions:           emptyPermission,
+        documentCreation:      emptyPermission,
+        documentVisualization: emptyPermission,
+      }}
+    >
       <Row gutter={[16, 16]}>
+        {/* ── Identificação ──────────────────────────────────────────────── */}
         <Col xs={24}>
           <Card title={<Space><ApartmentOutlined /><span>Identificação do processo</span></Space>}>
             <Row gutter={16}>
@@ -173,7 +281,11 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
               </Col>
               <Col xs={24} md={6}>
                 <Form.Item label="Código" name="code" rules={[{ required: true, message: 'Informe o código' }]} extra="Identificador curto, sem espaços.">
-                  <Input placeholder="Ex.: CTR-CORP" style={{ textTransform: 'uppercase' }} onChange={(e) => form.setFieldValue('code', e.target.value.toUpperCase())} />
+                  <Input
+                    placeholder="Ex.: CTR-CORP"
+                    style={{ textTransform: 'uppercase' }}
+                    onChange={(e) => form.setFieldValue('code', e.target.value.toUpperCase())}
+                  />
                 </Form.Item>
               </Col>
               <Col xs={24} md={6}>
@@ -195,24 +307,49 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
           </Card>
         </Col>
 
+        {/* ── Permissões ─────────────────────────────────────────────────── */}
         <Col xs={24}>
           <Card
             title={<Space><LockOutlined /><span>Permissões de acesso</span></Space>}
-            extra={<Text type="secondary" style={{ fontSize: 12 }}>Quem pode visualizar e operar neste processo</Text>}
+            extra={<Text type="secondary" style={{ fontSize: 12 }}>Deixe vazio para liberar acesso a todos</Text>}
           >
-            <Alert type="info" showIcon message="Deixe ambos os campos vazios para permitir acesso a todos os usuários da conta." style={{ marginBottom: 16, borderRadius: 8 }} />
-            <Row gutter={16}>
-              <Col xs={24} md={12}>
-                <Form.Item label={<Space size={4}><UserOutlined /><span>Usuários com acesso</span></Space>} name={['permissions', 'userIds']}>
-                  <Select mode="multiple" allowClear showSearch placeholder="Selecione usuários" options={userOptions} filterOption={(input, opt) => String(opt?.search ?? '').includes(input.toLowerCase())} optionLabelProp="label" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item label={<Space size={4}><TeamOutlined /><span>Grupos com acesso</span></Space>} name={['permissions', 'groupIds']}>
-                  <Select mode="multiple" allowClear showSearch placeholder="Selecione grupos" options={groupOptions} filterOption={(input, opt) => String(opt?.search ?? '').includes(input.toLowerCase())} optionLabelProp="label" />
-                </Form.Item>
-              </Col>
-            </Row>
+            <Alert
+              type="info" showIcon
+              message="Quando os campos são deixados vazios, todos os usuários da conta têm acesso. Selecione usuários ou grupos para restringir."
+              style={{ marginBottom: 20, borderRadius: 8 }}
+            />
+
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {/* Acesso geral ao processo */}
+              <PermissionSelector
+                label="Acesso ao processo"
+                icon={<LockOutlined style={{ color: '#1677ff', fontSize: 16 }} />}
+                description="Quem pode visualizar e operar neste processo"
+                fieldPrefix="permissions"
+                userOptions={userOptions}
+                groupOptions={groupOptions}
+              />
+
+              {/* Criação de documentos */}
+              <PermissionSelector
+                label="Criação de documentos"
+                icon={<FileAddOutlined style={{ color: '#52c41a', fontSize: 16 }} />}
+                description="Quem pode criar novos documentos neste processo"
+                fieldPrefix="documentCreation"
+                userOptions={userOptions}
+                groupOptions={groupOptions}
+              />
+
+              {/* Visualização de documentos */}
+              <PermissionSelector
+                label="Visualização de documentos"
+                icon={<EyeOutlined style={{ color: '#faad14', fontSize: 16 }} />}
+                description="Quem pode visualizar os documentos deste processo"
+                fieldPrefix="documentVisualization"
+                userOptions={userOptions}
+                groupOptions={groupOptions}
+              />
+            </Space>
           </Card>
         </Col>
       </Row>
@@ -315,7 +452,7 @@ export function EnvironmentSettingsPage({ processId }: EnvironmentSettingsPagePr
           children: <WorkflowsPage embedded processId={processId} />,
         }] : []),
 
-        // 3. Configurações
+        // 3. Configurações de ambiente
         {
           key: 'environment',
           label: 'Configurações',

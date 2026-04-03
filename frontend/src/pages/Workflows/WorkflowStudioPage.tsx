@@ -7,8 +7,9 @@ import {
 import type { TabsProps } from 'antd'
 import {
   ArrowLeftOutlined, BgColorsOutlined, BranchesOutlined, CheckCircleOutlined,
-  EditOutlined, EyeOutlined, HistoryOutlined, NodeIndexOutlined,
-  PlayCircleOutlined, SaveOutlined, SettingOutlined, StopOutlined, ThunderboltOutlined,
+  ClockCircleOutlined, EditOutlined, EyeOutlined, HistoryOutlined,
+  MailOutlined, NodeIndexOutlined, PlayCircleOutlined, SaveOutlined,
+  SettingOutlined, StopOutlined, ThunderboltOutlined,
 } from '@ant-design/icons'
 
 import { BpmnEditor, COLOR_PALETTE, type ColorEntry } from '../../features/workflows/components/BpmnEditor'
@@ -52,13 +53,27 @@ function getStatusColor(status: WorkflowStatus) {
 }
 
 function buildSupportedElementSignature(elements: BpmnElementSummary[]) {
-  return elements.filter((i) => i.kind !== 'unsupported').map((i) => `${i.kind}:${i.id}`).sort().join('|')
+  return elements
+    .filter((i) => i.kind !== 'unsupported')
+    .map((i) => `${i.kind}:${i.id}`)
+    .sort()
+    .join('|')
 }
 
+// Conta etapas relevantes do fluxo — inclui os novos eventos automáticos
 function countWorkflowSteps(elements: BpmnElementSummary[]) {
-  return elements.filter((i) => i.kind === 'activity' || i.kind === 'system-task' || i.kind === 'notification').length
+  return elements.filter((i) =>
+    i.kind === 'activity'    ||
+    i.kind === 'system-task' ||
+    i.kind === 'notification'||
+    i.kind === 'message'     ||
+    i.kind === 'timer'       ||
+    i.kind === 'signal'      ||
+    i.kind === 'conditional',
+  ).length
 }
 
+// Labels para o modal de configuração — inclui os 4 novos kinds
 function getElementKindLabel(kind?: BpmnElementSummary['kind']) {
   if (kind === 'start')        return 'Evento inicial'
   if (kind === 'end')          return 'Evento final'
@@ -67,20 +82,50 @@ function getElementKindLabel(kind?: BpmnElementSummary['kind']) {
   if (kind === 'notification') return 'Notificação'
   if (kind === 'system-task')  return 'Tarefa de sistema'
   if (kind === 'flow')         return 'Fluxo de sequência'
+  if (kind === 'message')      return 'Evento de Mensagem'
+  if (kind === 'timer')        return 'Evento Temporal'
+  if (kind === 'signal')       return 'Evento de Sinal'
+  if (kind === 'conditional')  return 'Evento Condicional'
   return 'Elemento'
 }
 
-function ColorPaletteTab({ selectedElement, onApplyColor }: {
+// Ícone para cada kind no header do modal
+function ElementKindIcon({ kind }: { kind?: BpmnElementSummary['kind'] }) {
+  if (kind === 'start')        return <PlayCircleOutlined />
+  if (kind === 'end')          return <StopOutlined />
+  if (kind === 'activity')     return <EditOutlined />
+  if (kind === 'gateway')      return <BranchesOutlined />
+  if (kind === 'notification') return <ThunderboltOutlined />
+  if (kind === 'system-task')  return <SettingOutlined />
+  if (kind === 'flow')         return <NodeIndexOutlined />
+  if (kind === 'message')      return <MailOutlined />
+  if (kind === 'timer')        return <ClockCircleOutlined />
+  if (kind === 'signal')       return <ThunderboltOutlined />
+  if (kind === 'conditional')  return <BranchesOutlined />
+  return <EditOutlined />
+}
+
+function ColorPaletteTab({
+  selectedElement,
+  onApplyColor,
+}: {
   selectedElement: BpmnElementSummary | null
   onApplyColor: (entry: ColorEntry) => void
 }) {
   if (!selectedElement) return <Empty description="Selecione um elemento para alterar a cor" />
   return (
     <div style={{ padding: 20 }}>
-      <Alert type="info" showIcon style={{ marginBottom: 16 }} message={selectedElement.name || selectedElement.id} description="Escolha uma cor para aplicar ao elemento selecionado no diagrama." />
+      <Alert
+        type="info" showIcon style={{ marginBottom: 16 }}
+        message={selectedElement.name || selectedElement.id}
+        description="Escolha uma cor para aplicar ao elemento selecionado no diagrama."
+      />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12 }}>
         {COLOR_PALETTE.map((entry) => (
-          <button key={entry.label} type="button" onClick={() => onApplyColor(entry)} style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12, textAlign: 'left', cursor: 'pointer' }}>
+          <button
+            key={entry.label} type="button" onClick={() => onApplyColor(entry)}
+            style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12, textAlign: 'left', cursor: 'pointer' }}
+          >
             <div style={{ width: '100%', height: 44, borderRadius: 8, background: entry.fill, border: `2px solid ${entry.stroke}`, marginBottom: 8 }} />
             <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{entry.label}</div>
             <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Fill: {entry.fill}</div>
@@ -98,21 +143,19 @@ export function WorkflowStudioPage() {
   const [searchParams] = useSearchParams()
   const [form] = Form.useForm<WorkflowStudioFormValues>()
 
-  // processId vem da query string quando o Studio foi aberto a partir de um processo
   const processId = searchParams.get('processId') ?? undefined
   const backPath  = processId ? `/processes/${processId}` : '/workflows'
 
-  // accountId do usuário logado — necessário para o scopeContext
   const user      = useAuthStore((s) => s.user)
   const accountId = (user as any)?.accountId ?? (user as any)?.tenantId ?? ''
 
-  const [workflow, setWorkflow]               = useState<WorkflowDefinition | null>(null)
-  const [elements, setElements]               = useState<BpmnElementSummary[]>([])
-  const [selectedElement, setSelectedElement] = useState<BpmnElementSummary | null>(null)
-  const [configsVersion, setConfigsVersion]   = useState(0)
-  const [configModalOpen, setConfigModalOpen] = useState(false)
+  const [workflow, setWorkflow]                 = useState<WorkflowDefinition | null>(null)
+  const [elements, setElements]                 = useState<BpmnElementSummary[]>([])
+  const [selectedElement, setSelectedElement]   = useState<BpmnElementSummary | null>(null)
+  const [configsVersion, setConfigsVersion]     = useState(0)
+  const [configModalOpen, setConfigModalOpen]   = useState(false)
   const [elementNameInput, setElementNameInput] = useState('')
-  const [modalTabKey, setModalTabKey]         = useState<'config' | 'colors'>('config')
+  const [modalTabKey, setModalTabKey]           = useState<'config' | 'colors'>('config')
 
   const bpmnRenameRef           = useRef<((id: string, name: string) => void) | null>(null)
   const bpmnColorRef            = useRef<((id: string, color: ColorEntry) => void) | null>(null)
@@ -146,7 +189,10 @@ export function WorkflowStudioPage() {
   }, [workflow, configsVersion])
 
   const validation = useMemo(() => {
-    if (!workflow) return { issues: [], summary: { totalRelevantElements: 0, configuredRelevantElements: 0, errors: 0, warnings: 0, readinessPercent: 0 } }
+    if (!workflow) return {
+      issues: [],
+      summary: { totalRelevantElements: 0, configuredRelevantElements: 0, errors: 0, warnings: 0, readinessPercent: 0 },
+    }
     return validateWorkflowStudio(workflow, elements, elementConfigs)
   }, [workflow, elements, elementConfigs])
 
@@ -158,7 +204,6 @@ export function WorkflowStudioPage() {
     return () => window.clearTimeout(timer)
   }, [workflow, elements])
 
-  // Scope context derivado do workflow carregado
   const scopeContext = useMemo(() => ({
     accountId:   workflow?.accountId   ?? accountId,
     accountName: workflow?.accountName,
@@ -179,24 +224,41 @@ export function WorkflowStudioPage() {
   }
 
   const handleSaveNow = () => {
-    const nextWorkflow: WorkflowDefinition = { ...workflow, stepsCount: countWorkflowSteps(elements), updatedAt: new Date().toISOString() }
+    const nextWorkflow: WorkflowDefinition = {
+      ...workflow, stepsCount: countWorkflowSteps(elements), updatedAt: new Date().toISOString(),
+    }
     upsertWorkflow(nextWorkflow)
     setWorkflow(nextWorkflow)
     message.success('Workflow salvo com sucesso.')
   }
 
   const handlePublish = () => {
-    if (validation.summary.errors > 0) { message.error('Resolva os erros de validação antes de publicar.'); return }
-    const nextWorkflow: WorkflowDefinition = { ...workflow, status: 'active', publishedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), stepsCount: countWorkflowSteps(elements) }
+    if (validation.summary.errors > 0) {
+      message.error('Resolva os erros de validação antes de publicar.')
+      return
+    }
+    const nextWorkflow: WorkflowDefinition = {
+      ...workflow, status: 'active',
+      publishedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      stepsCount: countWorkflowSteps(elements),
+    }
     upsertWorkflow(nextWorkflow)
     setWorkflow(nextWorkflow)
-    createWorkflowSnapshot({ workflow: nextWorkflow, elementConfigs, versionLabel: `Publicação ${nextWorkflow.version}`, note: 'Snapshot criado na publicação.' })
+    createWorkflowSnapshot({
+      workflow: nextWorkflow, elementConfigs,
+      versionLabel: `Publicação ${nextWorkflow.version}`,
+      note: 'Snapshot criado na publicação.',
+    })
     setConfigsVersion((prev) => prev + 1)
     message.success('Workflow publicado com sucesso.')
   }
 
   const handleCreateSnapshot = () => {
-    createWorkflowSnapshot({ workflow, elementConfigs, versionLabel: `${workflow.version} - ${new Date().toLocaleString()}`, note: 'Snapshot manual do Workflow Studio.' })
+    createWorkflowSnapshot({
+      workflow, elementConfigs,
+      versionLabel: `${workflow.version} - ${new Date().toLocaleString()}`,
+      note: 'Snapshot manual do Workflow Studio.',
+    })
     setConfigsVersion((prev) => prev + 1)
     message.success('Snapshot criado com sucesso.')
   }
@@ -207,7 +269,11 @@ export function WorkflowStudioPage() {
     const restoredWorkflow = getWorkflowById(workflow.id)
     if (!restoredWorkflow) { message.error('Workflow não encontrado após restauração.'); return }
     setWorkflow(restoredWorkflow)
-    form.setFieldsValue({ name: restoredWorkflow.name, description: restoredWorkflow.description, version: restoredWorkflow.version, status: restoredWorkflow.status, documentTypeName: restoredWorkflow.documentTypeName })
+    form.setFieldsValue({
+      name: restoredWorkflow.name, description: restoredWorkflow.description,
+      version: restoredWorkflow.version, status: restoredWorkflow.status,
+      documentTypeName: restoredWorkflow.documentTypeName,
+    })
     setConfigsVersion((prev) => prev + 1)
     message.success('Snapshot restaurado com sucesso.')
   }
@@ -267,20 +333,26 @@ export function WorkflowStudioPage() {
           </div>
         </Space>
         <Space wrap>
-          <Button icon={<EyeOutlined />} onClick={() => navigate(`/workflows/${workflow.id}`)}>Ver detalhes</Button>
-          <Button icon={<HistoryOutlined />} onClick={handleCreateSnapshot}>Snapshot</Button>
-          <Button icon={<SaveOutlined />} onClick={handleSaveNow}>Salvar</Button>
+          <Button icon={<EyeOutlined />}          onClick={() => navigate(`/workflows/${workflow.id}`)}>Ver detalhes</Button>
+          <Button icon={<HistoryOutlined />}       onClick={handleCreateSnapshot}>Snapshot</Button>
+          <Button icon={<SaveOutlined />}          onClick={handleSaveNow}>Salvar</Button>
           <Button type="primary" icon={<CheckCircleOutlined />} onClick={handlePublish}>Publicar</Button>
         </Space>
       </Space>
 
-      <Alert type="info" showIcon style={{ marginBottom: 16, borderRadius: 16 }} message="Workflow Studio" description="Clique para selecionar um elemento e dê duplo clique para abrir o modal de configuração." />
+      <Alert
+        type="info" showIcon style={{ marginBottom: 16, borderRadius: 16 }}
+        message="Workflow Studio"
+        description="Clique para selecionar um elemento e dê duplo clique para abrir o modal de configuração."
+      />
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={8}>
           <Card variant="borderless" style={{ borderRadius: 18 }}>
             <Descriptions column={1} size="small" title="Status do workflow">
-              <Descriptions.Item label="Situação"><Tag color={getStatusColor(workflow.status)}>{workflow.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Situação">
+                <Tag color={getStatusColor(workflow.status)}>{workflow.status}</Tag>
+              </Descriptions.Item>
               <Descriptions.Item label="Versão"><Tag color="blue">{workflow.version}</Tag></Descriptions.Item>
               <Descriptions.Item label="Elementos relevantes">{validation.summary.totalRelevantElements}</Descriptions.Item>
               <Descriptions.Item label="Elementos configurados">{validation.summary.configuredRelevantElements}</Descriptions.Item>
@@ -293,15 +365,45 @@ export function WorkflowStudioPage() {
               form={form}
               layout="vertical"
               onValuesChange={(_, values) => {
-                setWorkflow((prev) => prev ? { ...prev, name: values.name ?? prev.name, description: values.description, version: values.version ?? prev.version, status: values.status ?? prev.status, documentTypeName: values.documentTypeName, updatedAt: new Date().toISOString() } : prev)
+                setWorkflow((prev) =>
+                  prev ? {
+                    ...prev,
+                    name: values.name ?? prev.name,
+                    description: values.description,
+                    version: values.version ?? prev.version,
+                    status: values.status ?? prev.status,
+                    documentTypeName: values.documentTypeName,
+                    updatedAt: new Date().toISOString(),
+                  } : prev,
+                )
               }}
             >
               <Row gutter={16}>
-                <Col xs={24} md={8}><Form.Item label="Nome do workflow" name="name" rules={[{ required: true }]}><Input id="workflow-studio-name" autoComplete="off" /></Form.Item></Col>
-                <Col xs={24} md={4}><Form.Item label="Versão" name="version"><Input id="workflow-studio-version" autoComplete="off" /></Form.Item></Col>
-                <Col xs={24} md={4}><Form.Item label="Status" name="status"><Select id="workflow-studio-status" options={STATUS_OPTIONS} /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item label="Tipo documental" name="documentTypeName"><Input id="workflow-studio-document-type" autoComplete="off" /></Form.Item></Col>
-                <Col xs={24}><Form.Item label="Descrição" name="description"><Input.TextArea id="workflow-studio-description" autoComplete="off" rows={2} /></Form.Item></Col>
+                <Col xs={24} md={8}>
+                  <Form.Item label="Nome do workflow" name="name" rules={[{ required: true }]}>
+                    <Input id="workflow-studio-name" autoComplete="off" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={4}>
+                  <Form.Item label="Versão" name="version">
+                    <Input id="workflow-studio-version" autoComplete="off" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={4}>
+                  <Form.Item label="Status" name="status">
+                    <Select id="workflow-studio-status" options={STATUS_OPTIONS} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item label="Tipo documental" name="documentTypeName">
+                    <Input id="workflow-studio-document-type" autoComplete="off" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24}>
+                  <Form.Item label="Descrição" name="description">
+                    <Input.TextArea id="workflow-studio-description" autoComplete="off" rows={2} />
+                  </Form.Item>
+                </Col>
               </Row>
             </Form>
           </Card>
@@ -314,10 +416,22 @@ export function WorkflowStudioPage() {
         title={<Space><EditOutlined /><span>Modelador BPMN</span></Space>}
         extra={
           <Space>
-            <Button size="small" onClick={() => openElementModal(selectedElement, 'config')} disabled={!selectedElement?.isConfigurable}>
-              {selectedElement?.isConfigurable ? `Configurar: ${selectedElement.name || selectedElement.id}` : 'Selecione um elemento'}
+            <Button
+              size="small"
+              onClick={() => openElementModal(selectedElement, 'config')}
+              disabled={!selectedElement?.isConfigurable}
+            >
+              {selectedElement?.isConfigurable
+                ? `Configurar: ${selectedElement.name || selectedElement.id}`
+                : 'Selecione um elemento'}
             </Button>
-            <Button size="small" icon={<BgColorsOutlined />} onClick={() => openElementModal(selectedElement, 'colors')} disabled={!selectedElement?.isConfigurable}>Cores</Button>
+            <Button
+              size="small" icon={<BgColorsOutlined />}
+              onClick={() => openElementModal(selectedElement, 'colors')}
+              disabled={!selectedElement?.isConfigurable}
+            >
+              Cores
+            </Button>
           </Space>
         }
       >
@@ -342,7 +456,10 @@ export function WorkflowStudioPage() {
             const nextSignature = buildSupportedElementSignature(nextElements)
             if (nextSignature === lastElementSignatureRef.current) return
             lastElementSignatureRef.current = nextSignature
-            removeMissingElementConfigs(workflow.id, nextElements.filter((i) => i.kind !== 'unsupported').map((i) => i.id))
+            removeMissingElementConfigs(
+              workflow.id,
+              nextElements.filter((i) => i.kind !== 'unsupported').map((i) => i.id),
+            )
             setConfigsVersion((prev) => prev + 1)
           }}
         />
@@ -356,6 +473,7 @@ export function WorkflowStudioPage() {
         ]}
       />
 
+      {/* ── Modal de configuração do elemento ─────────────────────────────────── */}
       <Modal
         open={configModalOpen}
         onCancel={() => setConfigModalOpen(false)}
@@ -363,25 +481,31 @@ export function WorkflowStudioPage() {
         width={760}
         destroyOnClose={false}
         closeIcon={null}
-        styles={{ container: { padding: 0, borderRadius: 20, overflow: 'hidden' }, body: { padding: 0 } }}
+        styles={{
+          container: { padding: 0, borderRadius: 20, overflow: 'hidden' },
+          body: { padding: 0 },
+        }}
         title={null}
       >
         {selectedElement && (
           <>
-            <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)', padding: '24px 28px 20px', position: 'relative', overflow: 'hidden' }}>
+            {/* Header do modal */}
+            <div style={{
+              background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)',
+              padding: '24px 28px 20px', position: 'relative', overflow: 'hidden',
+            }}>
               <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', bottom: -20, right: 60, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
 
               <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
                 <Space align="center" size={14}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)', display: 'grid', placeItems: 'center', fontSize: 20, color: '#fff', flexShrink: 0 }}>
-                    {selectedElement.kind === 'start'        && <PlayCircleOutlined />}
-                    {selectedElement.kind === 'end'          && <StopOutlined />}
-                    {selectedElement.kind === 'activity'     && <EditOutlined />}
-                    {selectedElement.kind === 'gateway'      && <BranchesOutlined />}
-                    {selectedElement.kind === 'notification' && <ThunderboltOutlined />}
-                    {selectedElement.kind === 'system-task'  && <SettingOutlined />}
-                    {selectedElement.kind === 'flow'         && <NodeIndexOutlined />}
+                  {/* Ícone do kind — cobre todos os 11 kinds */}
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 12,
+                    background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)',
+                    display: 'grid', placeItems: 'center', fontSize: 20, color: '#fff', flexShrink: 0,
+                  }}>
+                    <ElementKindIcon kind={selectedElement.kind} />
                   </div>
 
                   <div>
@@ -405,14 +529,27 @@ export function WorkflowStudioPage() {
                       }}
                       placeholder="Nome do elemento..."
                       variant="borderless"
-                      style={{ color: '#fff', fontSize: 17, fontWeight: 700, padding: '0 4px', background: 'rgba(255,255,255,0.07)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', maxWidth: 420, width: 420, caretColor: '#fff' }}
+                      style={{
+                        color: '#fff', fontSize: 17, fontWeight: 700, padding: '0 4px',
+                        background: 'rgba(255,255,255,0.07)', borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        maxWidth: 420, width: 420, caretColor: '#fff',
+                      }}
                     />
 
                     <Space size={6} style={{ marginTop: 6 }}>
-                      <Tag style={{ margin: 0, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.20)', color: '#e2e8f0', borderRadius: 6, fontSize: 11, padding: '0 8px' }}>
+                      <Tag style={{
+                        margin: 0, background: 'rgba(255,255,255,0.12)',
+                        border: '1px solid rgba(255,255,255,0.20)', color: '#e2e8f0',
+                        borderRadius: 6, fontSize: 11, padding: '0 8px',
+                      }}>
                         {getElementKindLabel(selectedElement.kind)}
                       </Tag>
-                      <Tag style={{ margin: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#94a3b8', borderRadius: 6, fontSize: 11, padding: '0 8px' }}>
+                      <Tag style={{
+                        margin: 0, background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.12)', color: '#94a3b8',
+                        borderRadius: 6, fontSize: 11, padding: '0 8px',
+                      }}>
                         {selectedElement.id}
                       </Tag>
                       {currentElementConfig
@@ -422,7 +559,13 @@ export function WorkflowStudioPage() {
                   </div>
                 </Space>
 
-                <Button type="text" size="small" onClick={() => setConfigModalOpen(false)} style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18, lineHeight: 1, padding: '4px 8px', marginTop: -2 }}>✕</Button>
+                <Button
+                  type="text" size="small"
+                  onClick={() => setConfigModalOpen(false)}
+                  style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18, lineHeight: 1, padding: '4px 8px', marginTop: -2 }}
+                >
+                  ✕
+                </Button>
               </Space>
             </div>
 
@@ -430,7 +573,10 @@ export function WorkflowStudioPage() {
               activeKey={modalTabKey}
               onChange={(key) => setModalTabKey(key as 'config' | 'colors')}
               items={modalItems}
-              tabBarStyle={{ margin: 0, paddingLeft: 20, paddingRight: 20, borderBottom: '1px solid #f1f5f9', background: '#fafbfc' }}
+              tabBarStyle={{
+                margin: 0, paddingLeft: 20, paddingRight: 20,
+                borderBottom: '1px solid #f1f5f9', background: '#fafbfc',
+              }}
             />
           </>
         )}

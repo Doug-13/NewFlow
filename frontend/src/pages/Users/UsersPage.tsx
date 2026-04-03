@@ -85,7 +85,6 @@ function generateTempId() {
   return `pos-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 }
 
-// Máscara de CPF: 000.000.000-00
 function maskCpf(value: string): string {
   const d = value.replace(/\D/g, '').slice(0, 11)
   if (d.length <= 3) return d
@@ -96,27 +95,62 @@ function maskCpf(value: string): string {
 
 // ─── GroupsTab ────────────────────────────────────────────────────────────────
 
-function GroupsTab({ selectedGroupIds, onChange }: {
+function GroupsTab({ userId, selectedGroupIds, onChange }: {
+  userId?: string
   selectedGroupIds: string[]
   onChange: (ids: string[]) => void
 }) {
   const [selectValue, setSelectValue] = useState<string | undefined>()
   const { data: allGroups = [] } = useQuery({ queryKey: ['org-groups'], queryFn: getOrgGroups })
 
+  // Grupos em que o usuário é membro pelo campo memberIds do grupo
+  // (adicionado via OrganizationPage > aba Grupos)
+  const groupsViaMembership = useMemo(() => {
+    if (!userId) return [] as string[]
+    return (allGroups as OrgGroupDto[])
+      .filter((g) => g.memberIds?.includes(userId))
+      .map((g) => g.id)
+  }, [allGroups, userId])
+
+  // União: grupos selecionados manualmente + grupos via memberIds
+  const effectiveGroupIds = useMemo(
+    () => Array.from(new Set([...selectedGroupIds, ...groupsViaMembership])),
+    [selectedGroupIds, groupsViaMembership],
+  )
+
+  // Sincroniza o estado pai quando os memberships externos mudam
+  // (evita chamar onChange em loop — só sincroniza se houver diferença)
+  useMemo(() => {
+    const missing = groupsViaMembership.filter((id) => !selectedGroupIds.includes(id))
+    if (missing.length > 0) {
+      onChange([...selectedGroupIds, ...missing])
+    }
+  }, [groupsViaMembership]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleAdd = () => {
-    if (!selectValue || selectedGroupIds.includes(selectValue)) return
+    if (!selectValue || effectiveGroupIds.includes(selectValue)) return
     onChange([...selectedGroupIds, selectValue])
     setSelectValue(undefined)
   }
 
-  const availableOptions = allGroups
-    .filter((g: OrgGroupDto) => !selectedGroupIds.includes(g.id))
-    .map((g: OrgGroupDto) => ({ label: g.code ? `${g.name} (${g.code})` : g.name, value: g.id }))
+  const handleRemove = (id: string) => {
+    // Se o grupo foi adicionado via memberIds, não pode ser removido aqui
+    // (precisa ser removido na OrganizationPage)
+    if (groupsViaMembership.includes(id)) {
+      message.warning('Este grupo foi atribuído via estrutura organizacional. Para remover, edite o grupo na tela de Organização.')
+      return
+    }
+    onChange(selectedGroupIds.filter((gid) => gid !== id))
+  }
+
+  const availableOptions = (allGroups as OrgGroupDto[])
+    .filter((g) => !effectiveGroupIds.includes(g.id))
+    .map((g) => ({ label: g.code ? `${g.name} (${g.code})` : g.name, value: g.id }))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ background: '#f5f7fb', borderRadius: 10, padding: 16, border: '1px solid #eee' }}>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>Adicionar grupo</div>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>Adicionar grupo manualmente</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Select
             style={{ flex: 1 }}
@@ -133,22 +167,35 @@ function GroupsTab({ selectedGroupIds, onChange }: {
           </Button>
         </div>
       </div>
-      {selectedGroupIds.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhum grupo selecionado" />
+
+      {effectiveGroupIds.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhum grupo vinculado" />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {selectedGroupIds.map((id) => {
-            const group = allGroups.find((g: OrgGroupDto) => g.id === id)
+          {effectiveGroupIds.map((id) => {
+            const group = (allGroups as OrgGroupDto[]).find((g) => g.id === id)
             if (!group) return null
+            const viaOrg = groupsViaMembership.includes(id)
             return (
-              <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#fff', border: '1px solid #eee', borderRadius: 8 }}>
+              <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: viaOrg ? '#f0f9ff' : '#fff', border: `1px solid ${viaOrg ? '#bae0ff' : '#eee'}`, borderRadius: 8 }}>
                 <Space>
-                  <TeamOutlined style={{ color: '#1677ff' }} />
+                  <TeamOutlined style={{ color: viaOrg ? '#1677ff' : '#8c8c8c' }} />
                   <span>{group.name}</span>
                   {group.code && <Tag style={{ fontFamily: 'monospace', fontSize: 11 }}>{group.code}</Tag>}
+                  {viaOrg && (
+                    <Tag color="blue" style={{ fontSize: 10, marginLeft: 4 }}>via organização</Tag>
+                  )}
                 </Space>
-                <Button type="text" danger icon={<DeleteOutlined />} size="small"
-                  onClick={() => onChange(selectedGroupIds.filter((gid) => gid !== id))} />
+                <Tooltip title={viaOrg ? 'Remova pelo cadastro do grupo em Organização' : 'Remover do grupo'}>
+                  <Button
+                    type="text"
+                    danger={!viaOrg}
+                    icon={<DeleteOutlined />}
+                    size="small"
+                    disabled={viaOrg}
+                    onClick={() => handleRemove(id)}
+                  />
+                </Tooltip>
               </div>
             )
           })}
@@ -265,16 +312,14 @@ export function UsersPage() {
   const [photoPreview, setPhotoPreview] = useState<string | undefined>()
   const [fileList, setFileList] = useState<UploadFile[]>([])
 
-  // ── Filtros da tabela ──────────────────────────────────────────────────────
   const [filterDept, setFilterDept] = useState<string | undefined>()
   const [filterJob, setFilterJob] = useState<string | undefined>()
   const [filterRole, setFilterRole] = useState<string | undefined>()
   const [filterEnv, setFilterEnv] = useState<string | undefined>()
   const [filterStatus, setFilterStatus] = useState<string | undefined>()
   const [filterGroup, setFilterGroup] = useState<string | undefined>()
-  const [search, setSearch] = useState<string>('')  // busca por nome/email
+  const [search, setSearch] = useState<string>('')
 
-  // ── Importação em lote ────────────────────────────────────────────────────
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkPasteText, setBulkPasteText] = useState('')
   const [bulkErrors, setBulkErrors] = useState<string[]>([])
@@ -283,7 +328,6 @@ export function UsersPage() {
   const { data: allUsers, isLoading } = useQuery({ queryKey: ['users'], queryFn: getUsers })
   const { data: allGroups = [] } = useQuery({ queryKey: ['org-groups'], queryFn: getOrgGroups })
 
-  // Listas únicas para os selects de filtro
   const deptOptions = useMemo(() => {
     const vals = [...new Set((allUsers ?? []).map((u: any) => u.department).filter(Boolean))]
     return vals.map((v) => ({ label: v as string, value: v as string }))
@@ -301,10 +345,8 @@ export function UsersPage() {
   ]
 
   const envOptions = ENVIRONMENTS.map((e) => ({ label: e, value: e }))
-
   const statusOptions = Object.entries(STATUS_CONFIG).map(([v, { label }]) => ({ label, value: v }))
 
-  // Dados filtrados
   const data = useMemo(() => {
     let rows = (allUsers ?? []) as ExtendedUserListItem[]
     if (search)       rows = rows.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()) || r.email.toLowerCase().includes(search.toLowerCase()))
@@ -313,9 +355,14 @@ export function UsersPage() {
     if (filterRole)   rows = rows.filter((r) => r.role === filterRole)
     if (filterEnv)    rows = rows.filter((r) => r.environments?.includes(filterEnv))
     if (filterStatus) rows = rows.filter((r) => (r.status ?? 'active') === filterStatus)
-    if (filterGroup)  rows = rows.filter((r) => r.groupIds?.includes(filterGroup))
+    if (filterGroup)  rows = rows.filter((r) => {
+      // Verifica tanto groupIds do usuário quanto memberIds do grupo
+      const byUserGroupIds = r.groupIds?.includes(filterGroup)
+      const byMembership   = (allGroups as OrgGroupDto[]).find((g) => g.id === filterGroup)?.memberIds?.includes(r.id)
+      return byUserGroupIds || byMembership
+    })
     return rows
-  }, [allUsers, search, filterDept, filterJob, filterRole, filterEnv, filterStatus, filterGroup])
+  }, [allUsers, allGroups, search, filterDept, filterJob, filterRole, filterEnv, filterStatus, filterGroup])
 
   const createMutation = useMutation({
     mutationFn: createUser,
@@ -329,8 +376,6 @@ export function UsersPage() {
 
   const roleColors: Record<string, string> = { Admin: 'purple', Gestor: 'blue', Operador: 'default' }
 
-  // ── CSV bulk helpers ──────────────────────────────────────────────────────
-
   const BULK_CSV_HEADERS = ['nome', 'email', 'senha', 'papel', 'setor', 'cargo', 'telefone', 'status', 'ambientes']
 
   const downloadUserTemplate = () => {
@@ -338,7 +383,6 @@ export function UsersPage() {
       BULK_CSV_HEADERS.join(';'),
       'João Silva;joao@empresa.com;Senha@123;Operador;Jurídico;Analista;(11) 99999-0010;active;Web,Mobile',
       'Maria Costa;maria@empresa.com;Senha@123;Gestor;RH;Coordenadora;;active;Web',
-      'Pedro Lima;pedro@empresa.com;Senha@123;Operador;TI;Desenvolvedor;;inactive;Web,Desktop',
     ]
     const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url  = URL.createObjectURL(blob)
@@ -353,15 +397,11 @@ export function UsersPage() {
 
     const header = lines[0].toLowerCase().split(';').map((h) => h.trim())
     const idx = {
-      name:        header.indexOf('nome'),
-      email:       header.indexOf('email'),
-      password:    header.indexOf('senha'),
-      role:        header.indexOf('papel'),
-      department:  header.indexOf('setor'),
-      jobTitle:    header.indexOf('cargo'),
-      phone:       header.indexOf('telefone'),
-      status:      header.indexOf('status'),
-      environments:header.indexOf('ambientes'),
+      name: header.indexOf('nome'), email: header.indexOf('email'),
+      password: header.indexOf('senha'), role: header.indexOf('papel'),
+      department: header.indexOf('setor'), jobTitle: header.indexOf('cargo'),
+      phone: header.indexOf('telefone'), status: header.indexOf('status'),
+      environments: header.indexOf('ambientes'),
     }
 
     const errors: string[] = []
@@ -370,45 +410,32 @@ export function UsersPage() {
     const seenEmails = new Set<string>()
 
     lines.slice(1).forEach((line, i) => {
-      const cols   = line.split(';').map((c) => c.trim())
+      const cols = line.split(';').map((c) => c.trim())
       const rowNum = i + 2
-
       const name  = idx.name  >= 0 ? cols[idx.name]  : ''
       const email = idx.email >= 0 ? cols[idx.email] : ''
-
       if (!name)  { errors.push(`Linha ${rowNum}: nome obrigatório`); return }
       if (!email) { errors.push(`Linha ${rowNum}: e-mail obrigatório`); return }
       if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) { errors.push(`Linha ${rowNum}: e-mail inválido — "${email}"`); return }
-      if (existingEmails.has(email.toLowerCase())) { errors.push(`Linha ${rowNum}: e-mail já cadastrado — "${email}" (duplicata ignorada)`); return }
-      if (seenEmails.has(email.toLowerCase())) { errors.push(`Linha ${rowNum}: e-mail duplicado no arquivo — "${email}" (ignorado)`); return }
-
+      if (existingEmails.has(email.toLowerCase())) { errors.push(`Linha ${rowNum}: e-mail já cadastrado — "${email}"`); return }
+      if (seenEmails.has(email.toLowerCase())) { errors.push(`Linha ${rowNum}: e-mail duplicado no arquivo — "${email}"`); return }
       seenEmails.add(email.toLowerCase())
-
       const rawRole = (idx.role >= 0 ? cols[idx.role] : '') || 'Operador'
-      const validRoles = ['Admin', 'Gestor', 'Operador']
-      const role = validRoles.find((r) => r.toLowerCase() === rawRole.toLowerCase()) ?? 'Operador'
-
+      const role = ['Admin', 'Gestor', 'Operador'].find((r) => r.toLowerCase() === rawRole.toLowerCase()) ?? 'Operador'
       const rawStatus = (idx.status >= 0 ? cols[idx.status] : '') || 'active'
-      const validStatus = ['active', 'inactive', 'absent']
-      const status = validStatus.includes(rawStatus.toLowerCase()) ? rawStatus.toLowerCase() : 'active'
-
+      const status = ['active', 'inactive', 'absent'].includes(rawStatus.toLowerCase()) ? rawStatus.toLowerCase() : 'active'
       const envStr = idx.environments >= 0 ? cols[idx.environments] : ''
       const environments = envStr ? envStr.split(',').map((e) => e.trim()).filter(Boolean) : []
-
       rows.push({
-        name,
-        email,
-        password:    idx.password   >= 0 ? cols[idx.password]   : 'Trocar@123',
+        name, email,
+        password:   idx.password   >= 0 ? cols[idx.password]   : 'Trocar@123',
         role,
-        department:  idx.department >= 0 ? cols[idx.department] : '',
-        jobTitle:    idx.jobTitle   >= 0 ? cols[idx.jobTitle]   : '',
-        phone:       idx.phone      >= 0 ? cols[idx.phone]      : '',
-        status,
-        environments,
-        isActive: status === 'active',
+        department: idx.department >= 0 ? cols[idx.department] : '',
+        jobTitle:   idx.jobTitle   >= 0 ? cols[idx.jobTitle]   : '',
+        phone:      idx.phone      >= 0 ? cols[idx.phone]      : '',
+        status, environments, isActive: status === 'active',
       })
     })
-
     return { rows, errors }
   }
 
@@ -416,10 +443,7 @@ export function UsersPage() {
     const reader = new FileReader()
     reader.onload = (e) => {
       const { rows, errors } = parseBulkCsv(e.target?.result as string)
-      setBulkPreview(rows)
-      setBulkErrors(errors)
-      setBulkOpen(true)
-      setBulkPasteText('')
+      setBulkPreview(rows); setBulkErrors(errors); setBulkOpen(true); setBulkPasteText('')
     }
     reader.readAsText(file, 'UTF-8')
     return false
@@ -427,17 +451,13 @@ export function UsersPage() {
 
   const handleBulkPasteParse = () => {
     const { rows, errors } = parseBulkCsv(bulkPasteText)
-    setBulkPreview(rows)
-    setBulkErrors(errors)
+    setBulkPreview(rows); setBulkErrors(errors)
   }
 
   const handleBulkConfirm = async () => {
     let ok = 0
     for (const row of bulkPreview) {
-      try {
-        await createUser(row)
-        ok++
-      } catch { /* individual errors already surfaced */ }
+      try { await createUser(row); ok++ } catch { /* */ }
     }
     qc.invalidateQueries({ queryKey: ['users'] })
     message.success(`${ok} usuário(s) criado(s) com sucesso.`)
@@ -459,15 +479,14 @@ export function UsersPage() {
   const handleOpenEdit = (user: ExtendedUserListItem) => {
     setEditingUser(user); setActiveTab('data')
     setPositions(user.positions ?? [])
+    // Carrega groupIds do próprio usuário — o GroupsTab vai complementar com os do grupo
     setSelectedGroupIds(user.groupIds ?? [])
     form.setFieldsValue({
       name: user.name, email: user.email, password: '',
       role: user.role, cpf: user.cpf, phone: user.phone,
       department: user.department, jobTitle: user.jobTitle,
-      position: user.position,
-      status: user.status ?? 'active',
-      notes: user.notes,
-      substituteId: user.substituteId,
+      position: user.position, status: user.status ?? 'active',
+      notes: user.notes, substituteId: user.substituteId,
       environments: user.environments ?? [],
     })
     setPhotoPreview(user.photoUrl); setFileList([]); setOpen(true)
@@ -475,7 +494,7 @@ export function UsersPage() {
 
   const handleBeforeUpload = (file: File) => {
     if (!file.type.startsWith('image/')) { message.error('Selecione um arquivo de imagem válido.'); return Upload.LIST_IGNORE }
-    if (file.size / 1024 / 1024 >= 3) { message.error('A imagem deve ter no máximo 3MB.'); return Upload.LIST_IGNORE }
+    if (file.size / 1024 / 1024 >= 3)   { message.error('A imagem deve ter no máximo 3MB.');        return Upload.LIST_IGNORE }
     return false
   }
 
@@ -508,8 +527,6 @@ export function UsersPage() {
     }
   }
 
-  // ── Colunas ────────────────────────────────────────────────────────────────
-
   const columns = useMemo(() => [
     {
       title: 'Usuário', key: 'user',
@@ -524,19 +541,11 @@ export function UsersPage() {
         </div>
       ),
     },
-    {
-      title: 'Setor', dataIndex: 'department', key: 'department',
-      render: (v: string) => <span className="users-page__muted">{v || '—'}</span>,
-    },
-    {
-      title: 'Cargo', dataIndex: 'jobTitle', key: 'jobTitle',
-      render: (v: string) => <span className="users-page__muted">{v || '—'}</span>,
-    },
+    { title: 'Setor', dataIndex: 'department', key: 'department', render: (v: string) => <span className="users-page__muted">{v || '—'}</span> },
+    { title: 'Cargo', dataIndex: 'jobTitle',   key: 'jobTitle',   render: (v: string) => <span className="users-page__muted">{v || '—'}</span> },
     {
       title: 'Papel', key: 'role',
-      render: (_: unknown, r: ExtendedUserListItem) => (
-        <Tag color={roleColors[r.role] || 'default'}>{r.role}</Tag>
-      ),
+      render: (_: unknown, r: ExtendedUserListItem) => <Tag color={roleColors[r.role] || 'default'}>{r.role}</Tag>,
     },
     {
       title: 'Ambientes', key: 'environments',
@@ -544,6 +553,26 @@ export function UsersPage() {
         r.environments?.length
           ? <Space size={4} wrap>{r.environments.map((e) => <Tag key={e}>{e}</Tag>)}</Space>
           : <span className="users-page__muted">—</span>,
+    },
+    {
+      title: 'Grupos', key: 'groups',
+      render: (_: unknown, r: ExtendedUserListItem) => {
+        // Une groupIds do usuário com grupos cujo memberIds inclui o usuário
+        const byMembership = (allGroups as OrgGroupDto[])
+          .filter((g) => g.memberIds?.includes(r.id))
+          .map((g) => g.id)
+        const allGroupIds = Array.from(new Set([...(r.groupIds ?? []), ...byMembership]))
+        if (allGroupIds.length === 0) return <span className="users-page__muted">—</span>
+        return (
+          <Space size={4} wrap>
+            {allGroupIds.slice(0, 3).map((id) => {
+              const g = (allGroups as OrgGroupDto[]).find((g) => g.id === id)
+              return g ? <Tag key={id} color="geekblue" style={{ fontSize: 11 }}>{g.name}</Tag> : null
+            })}
+            {allGroupIds.length > 3 && <Tag style={{ fontSize: 11 }}>+{allGroupIds.length - 3}</Tag>}
+          </Space>
+        )
+      },
     },
     {
       title: 'Status', key: 'status',
@@ -554,14 +583,11 @@ export function UsersPage() {
       },
     },
     {
-      title: 'Usuário Substituto', key: 'substitute',
-      render: (_: unknown, r: ExtendedUserListItem) => (
-        <span className="users-page__muted">{r.substituteName || '—'}</span>
-      ),
+      title: 'Substituto', key: 'substitute',
+      render: (_: unknown, r: ExtendedUserListItem) => <span className="users-page__muted">{r.substituteName || '—'}</span>,
     },
-  ], [])
+  ], [allGroups])
 
-  // ── Substituídos disponíveis (todos exceto o próprio usuário editado) ───────
   const substituteOptions = useMemo(() =>
     (allUsers ?? [])
       .filter((u: any) => u.id !== editingUser?.id)
@@ -569,104 +595,40 @@ export function UsersPage() {
     [allUsers, editingUser],
   )
 
-  // ── Tabs do modal ──────────────────────────────────────────────────────────
-
   const tabItems = [
     {
       key: 'data',
       label: 'Dados do usuário',
       children: (
-        <Form form={form} layout="vertical"
-          initialValues={{ role: 'Operador', status: 'active' }}
-          onFinish={handleSubmit}>
-
-          {/* Foto */}
+        <Form form={form} layout="vertical" initialValues={{ role: 'Operador', status: 'active' }} onFinish={handleSubmit}>
           <div className="users-page__profile-upload">
-            <Avatar size={80} src={photoPreview}
-              icon={!photoPreview ? <UserOutlined /> : undefined}
-              className="users-page__profile-avatar" />
+            <Avatar size={80} src={photoPreview} icon={!photoPreview ? <UserOutlined /> : undefined} className="users-page__profile-avatar" />
             <div className="users-page__profile-upload-content">
               <div className="users-page__profile-upload-title">Foto do perfil</div>
               <Form.Item name="photoFile" valuePropName="file" style={{ marginBottom: 0 }}>
-                <Upload accept="image/*" beforeUpload={handleBeforeUpload}
-                  onChange={handleUploadChange} fileList={fileList} maxCount={1} showUploadList={false}>
+                <Upload accept="image/*" beforeUpload={handleBeforeUpload} onChange={handleUploadChange} fileList={fileList} maxCount={1} showUploadList={false}>
                   <Button size="small" icon={<UploadOutlined />}>Selecionar foto</Button>
                 </Upload>
               </Form.Item>
             </div>
           </div>
 
-          {/* Grid 2 colunas */}
           <Row gutter={12}>
-            <Col span={16}>
-              <Form.Item label="Nome completo" name="name" rules={[{ required: true, message: 'Informe o nome' }]}>
-                <Input placeholder="Nome completo" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Papel" name="role">
-                <Select options={roleOptions} />
-              </Form.Item>
-            </Col>
+            <Col span={16}><Form.Item label="Nome completo" name="name" rules={[{ required: true, message: 'Informe o nome' }]}><Input placeholder="Nome completo" /></Form.Item></Col>
+            <Col span={8}><Form.Item label="Papel" name="role"><Select options={roleOptions} /></Form.Item></Col>
 
-            <Col span={14}>
-              <Form.Item label="E-mail" name="email"
-                rules={[{ required: true, message: 'Informe o e-mail' }, { type: 'email', message: 'E-mail inválido' }]}>
-                <Input placeholder="usuario@empresa.com" />
-              </Form.Item>
-            </Col>
-            <Col span={10}>
-              <Form.Item label="Senha" name="password"
-                rules={editingUser ? [{ min: 6, message: 'Mín. 6 caracteres' }] : [{ required: true, message: 'Informe a senha' }, { min: 6, message: 'Mín. 6 caracteres' }]}
-                extra={editingUser ? 'Deixe em branco para manter.' : undefined}>
-                <Input.Password placeholder={editingUser ? '••••••' : 'Digite a senha'} />
-              </Form.Item>
-            </Col>
+            <Col span={14}><Form.Item label="E-mail" name="email" rules={[{ required: true, message: 'Informe o e-mail' }, { type: 'email', message: 'E-mail inválido' }]}><Input placeholder="usuario@empresa.com" /></Form.Item></Col>
+            <Col span={10}><Form.Item label="Senha" name="password" rules={editingUser ? [{ min: 6, message: 'Mín. 6 caracteres' }] : [{ required: true, message: 'Informe a senha' }, { min: 6, message: 'Mín. 6 caracteres' }]} extra={editingUser ? 'Deixe em branco para manter.' : undefined}><Input.Password placeholder={editingUser ? '••••••' : 'Digite a senha'} /></Form.Item></Col>
 
-            <Col span={8}>
-              <Form.Item label="CPF" name="cpf"
-                rules={[{ pattern: /^\d{3}\.\d{3}\.\d{3}-\d{2}$/, message: 'CPF inválido' }]}>
-                <Input placeholder="000.000.000-00" maxLength={14}
-                  onChange={(e) => form.setFieldValue('cpf', maskCpf(e.target.value))} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Telefone" name="phone">
-                <Input placeholder="(51) 99999-9999" maxLength={15} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Status" name="status">
-                <Select options={statusOptions} placeholder="Selecione o status" />
-              </Form.Item>
-            </Col>
+            <Col span={8}><Form.Item label="CPF" name="cpf" rules={[{ pattern: /^\d{3}\.\d{3}\.\d{3}-\d{2}$/, message: 'CPF inválido' }]}><Input placeholder="000.000.000-00" maxLength={14} onChange={(e) => form.setFieldValue('cpf', maskCpf(e.target.value))} /></Form.Item></Col>
+            <Col span={8}><Form.Item label="Telefone" name="phone"><Input placeholder="(51) 99999-9999" maxLength={15} /></Form.Item></Col>
+            <Col span={8}><Form.Item label="Status" name="status"><Select options={statusOptions} placeholder="Selecione o status" /></Form.Item></Col>
 
-            <Col span={12}>
-              <Form.Item label="Setor / Departamento" name="department">
-                <Input placeholder="Ex.: Jurídico, RH, TI" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Cargo / Função" name="jobTitle">
-                <Input placeholder="Ex.: Analista, Coordenador" />
-              </Form.Item>
-            </Col>
+            <Col span={12}><Form.Item label="Setor / Departamento" name="department"><Input placeholder="Ex.: Jurídico, RH, TI" /></Form.Item></Col>
+            <Col span={12}><Form.Item label="Cargo / Função" name="jobTitle"><Input placeholder="Ex.: Analista, Coordenador" /></Form.Item></Col>
 
-            <Col span={12}>
-              <Form.Item label="Usuário Substituto" name="substituteId">
-                <Select allowClear placeholder="Selecione o substituto..."
-                  options={substituteOptions} showSearch
-                  filterOption={(input, opt) =>
-                    (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  } />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Ambientes" name="environments">
-                <Select mode="multiple" allowClear placeholder="Selecione os ambientes..."
-                  options={envOptions} />
-              </Form.Item>
-            </Col>
+            <Col span={12}><Form.Item label="Usuário Substituto" name="substituteId"><Select allowClear placeholder="Selecione o substituto..." options={substituteOptions} showSearch filterOption={(input, opt) => (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())} /></Form.Item></Col>
+            <Col span={12}><Form.Item label="Ambientes" name="environments"><Select mode="multiple" allowClear placeholder="Selecione os ambientes..." options={envOptions} /></Form.Item></Col>
           </Row>
 
           <Form.Item label="Observações" name="notes">
@@ -679,11 +641,8 @@ export function UsersPage() {
       key: 'positions',
       label: (
         <Space size={6}>
-          <ApartmentOutlined />
-          Posições
-          {positions.length > 0 && (
-            <Tag color="geekblue" style={{ marginLeft: 2, lineHeight: '18px' }}>{positions.length}</Tag>
-          )}
+          <ApartmentOutlined />Posições
+          {positions.length > 0 && <Tag color="geekblue" style={{ marginLeft: 2, lineHeight: '18px' }}>{positions.length}</Tag>}
         </Space>
       ),
       children: <PositionsTab positions={positions} onChange={setPositions} />,
@@ -692,18 +651,14 @@ export function UsersPage() {
       key: 'groups',
       label: (
         <Space size={6}>
-          <TeamOutlined />
-          Grupos
-          {selectedGroupIds.length > 0 && (
-            <Tag color="geekblue" style={{ marginLeft: 2, lineHeight: '18px' }}>{selectedGroupIds.length}</Tag>
-          )}
+          <TeamOutlined />Grupos
+          {selectedGroupIds.length > 0 && <Tag color="geekblue" style={{ marginLeft: 2, lineHeight: '18px' }}>{selectedGroupIds.length}</Tag>}
         </Space>
       ),
-      children: <GroupsTab selectedGroupIds={selectedGroupIds} onChange={setSelectedGroupIds} />,
+      // Passa o userId para o GroupsTab poder cruzar com memberIds dos grupos
+      children: <GroupsTab userId={editingUser?.id} selectedGroupIds={selectedGroupIds} onChange={setSelectedGroupIds} />,
     },
   ]
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="users-page">
@@ -725,69 +680,41 @@ export function UsersPage() {
         </Space>
       </div>
 
-      {/* ── Barra de filtros ────────────────────────────────────────────────── */}
       <div className="users-page__filters">
-        <Input.Search
-          placeholder="Buscar por nome ou e-mail..."
-          allowClear
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: 260 }}
-        />
-        <Select allowClear placeholder="Setor" style={{ width: 160 }}
-          options={deptOptions} value={filterDept} onChange={setFilterDept} />
-        <Select allowClear placeholder="Cargo" style={{ width: 180 }}
-          options={jobOptions} value={filterJob} onChange={setFilterJob} />
-        <Select allowClear placeholder="Papel" style={{ width: 130 }}
-          options={roleOptions} value={filterRole} onChange={setFilterRole} />
-        <Select allowClear placeholder="Ambiente" style={{ width: 140 }}
-          options={envOptions} value={filterEnv} onChange={setFilterEnv} />
-        <Select allowClear placeholder="Status" style={{ width: 130 }}
-          options={statusOptions} value={filterStatus} onChange={setFilterStatus} />
-        <Select allowClear placeholder="Grupo" style={{ width: 150 }}
+        <Input.Search placeholder="Buscar por nome ou e-mail..." allowClear value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 260 }} />
+        <Select allowClear placeholder="Setor"     style={{ width: 160 }} options={deptOptions}   value={filterDept}   onChange={setFilterDept} />
+        <Select allowClear placeholder="Cargo"     style={{ width: 180 }} options={jobOptions}    value={filterJob}    onChange={setFilterJob} />
+        <Select allowClear placeholder="Papel"     style={{ width: 130 }} options={roleOptions}   value={filterRole}   onChange={setFilterRole} />
+        <Select allowClear placeholder="Ambiente"  style={{ width: 140 }} options={envOptions}    value={filterEnv}    onChange={setFilterEnv} />
+        <Select allowClear placeholder="Status"    style={{ width: 130 }} options={statusOptions} value={filterStatus} onChange={setFilterStatus} />
+        <Select allowClear placeholder="Grupo"     style={{ width: 150 }}
           options={(allGroups as OrgGroupDto[]).map((g) => ({ label: g.name, value: g.id }))}
           value={filterGroup} onChange={setFilterGroup} optionFilterProp="label" showSearch />
         {(search || filterDept || filterJob || filterRole || filterEnv || filterStatus || filterGroup) && (
           <Button size="small" type="link" onClick={() => {
             setSearch(''); setFilterDept(undefined); setFilterJob(undefined)
             setFilterRole(undefined); setFilterEnv(undefined); setFilterStatus(undefined); setFilterGroup(undefined)
-          }}>
-            Limpar filtros
-          </Button>
+          }}>Limpar filtros</Button>
         )}
       </div>
 
       <div className="users-page__table-card">
         <Table
-          dataSource={data}
-          columns={columns}
-          rowKey="id"
-          loading={isLoading}
-          scroll={{ x: 1100 }}
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-          onRow={(record: ExtendedUserListItem) => ({
-            onClick: () => handleOpenEdit(record),
-            style: { cursor: 'pointer' },
-          })}
+          dataSource={data} columns={columns} rowKey="id" loading={isLoading}
+          scroll={{ x: 1100 }} pagination={{ pageSize: 10, showSizeChanger: false }}
+          onRow={(record: ExtendedUserListItem) => ({ onClick: () => handleOpenEdit(record), style: { cursor: 'pointer' } })}
         />
       </div>
 
       <Modal
         title={editingUser ? 'Editar Usuário' : 'Novo Usuário'}
-        open={open}
-        onCancel={handleCloseModal}
-        onOk={() => form.submit()}
+        open={open} onCancel={handleCloseModal} onOk={() => form.submit()}
         okText={editingUser ? 'Salvar alterações' : 'Criar usuário'}
-        confirmLoading={isSaving}
-        width={900}
-        destroyOnHidden
-        className="users-page__modal"
+        confirmLoading={isSaving} width={900} destroyOnHidden className="users-page__modal"
       >
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems}
-          className="users-page__modal-tabs" />
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} className="users-page__modal-tabs" />
       </Modal>
 
-      {/* ── Modal Importação em Lote ──────────────────────────────────────── */}
       <Modal
         title="Importar Usuários em Lote"
         open={bulkOpen}
@@ -795,57 +722,38 @@ export function UsersPage() {
         onOk={handleBulkConfirm}
         okText={`Confirmar importação${bulkPreview.length > 0 ? ` (${bulkPreview.length})` : ''}`}
         okButtonProps={{ disabled: bulkPreview.length === 0 }}
-        width={860}
-        destroyOnHidden
+        width={860} destroyOnHidden
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          {/* Instrução + modelo */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ fontSize: 12, color: '#666', lineHeight: 1.6 }}>
               Cole ou faça upload de um CSV com <strong>ponto-e-vírgula</strong> como separador.<br />
-              Cabeçalho obrigatório: <code>nome;email;senha;papel;setor;cargo;telefone;status;ambientes</code><br />
-              <span style={{ color: '#999' }}>Campos obrigatórios: <strong>nome</strong> e <strong>email</strong>. Ambientes separados por vírgula.</span>
+              Cabeçalho: <code>nome;email;senha;papel;setor;cargo;telefone;status;ambientes</code>
             </div>
-            <Button size="small" icon={<DownloadOutlined />} onClick={downloadUserTemplate} style={{ flexShrink: 0 }}>
-              Baixar modelo
-            </Button>
+            <Button size="small" icon={<DownloadOutlined />} onClick={downloadUserTemplate} style={{ flexShrink: 0 }}>Baixar modelo</Button>
           </div>
 
-          {/* Textarea para colar */}
-          <Input.TextArea
-            rows={6}
-            value={bulkPasteText}
+          <Input.TextArea rows={6} value={bulkPasteText}
             onChange={(e) => { setBulkPasteText(e.target.value); setBulkPreview([]); setBulkErrors([]) }}
             placeholder={"nome;email;senha;papel;setor;cargo;telefone;status;ambientes\nJoão Silva;joao@empresa.com;Senha@123;Operador;Jurídico;Analista;(11) 99999-0010;active;Web,Mobile"}
-            style={{ fontFamily: 'monospace', fontSize: 12 }}
-          />
+            style={{ fontFamily: 'monospace', fontSize: 12 }} />
+
           {bulkPasteText.trim() && bulkPreview.length === 0 && (
-            <Button size="small" type="dashed" onClick={handleBulkPasteParse}>
-              Validar dados colados
-            </Button>
+            <Button size="small" type="dashed" onClick={handleBulkPasteParse}>Validar dados colados</Button>
           )}
 
-          {/* Erros / avisos */}
           {bulkErrors.length > 0 && (
             <div style={{ background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6, padding: '8px 12px', maxHeight: 100, overflowY: 'auto' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#d48806', marginBottom: 4 }}>
-                {bulkErrors.length} aviso(s):
-              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#d48806', marginBottom: 4 }}>{bulkErrors.length} aviso(s):</div>
               {bulkErrors.map((e, i) => <div key={i} style={{ fontSize: 11, color: '#875800' }}>{e}</div>)}
             </div>
           )}
 
-          {/* Preview da tabela */}
           {bulkPreview.length > 0 && (
             <>
               <Divider style={{ margin: '4px 0' }} />
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#52c41a' }}>
-                ✓ {bulkPreview.length} usuário(s) prontos para importação:
-              </div>
-              <Table
-                size="small"
-                dataSource={bulkPreview.map((r, i) => ({ ...r, key: i }))}
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#52c41a' }}>✓ {bulkPreview.length} usuário(s) prontos para importação:</div>
+              <Table size="small" dataSource={bulkPreview.map((r, i) => ({ ...r, key: i }))}
                 pagination={{ pageSize: 5, showSizeChanger: false }}
                 columns={[
                   { title: 'Nome',   dataIndex: 'name',       key: 'name' },

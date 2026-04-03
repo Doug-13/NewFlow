@@ -46,6 +46,8 @@ function ensureAllCollections(db: Partial<MockDatabase> | null | undefined): Moc
     metadataValues:          clone(db?.metadataValues          ?? INITIAL_MOCK_DB.metadataValues),
     notificationTemplates:   clone(db?.notificationTemplates   ?? INITIAL_MOCK_DB.notificationTemplates),
     dashboards:              clone(db?.dashboards              ?? INITIAL_MOCK_DB.dashboards),
+    auditLogs:               clone(db?.auditLogs               ?? INITIAL_MOCK_DB.auditLogs),
+    environmentConfigurations: clone(db?.environmentConfigurations ?? INITIAL_MOCK_DB.environmentConfigurations),
   }
 }
 

@@ -37,33 +37,62 @@ export interface MetadataValueDto {
   fieldType: string
   maskType?: string | null
   isRequired: boolean
-  value: any
+  isReadOnly?: boolean
+  value: unknown
   options?: MetadataOptionDto[]
   tableColumns?: MetadataTableColumnDto[]
 }
 
-export const getMetadataDefinitions = async (params?: { metadataSetId?: string }) =>
-  (
-    await api.get('/metadata/definitions', {
-      params: {
-        ...(params?.metadataSetId ? { metadataSetId: params.metadataSetId } : {}),
-      },
-    })
-  ).data as MetadataDefinitionDto[]
+export interface SaveMetadataValueDto {
+  metadataDefinitionId: string
+  value: unknown
+}
 
-export const createMetadataDefinition = async (data: Partial<MetadataDefinitionDto>) =>
-  (await api.post('/metadata/definitions', data)).data as MetadataDefinitionDto
+export const getMetadataDefinitions = async (params?: {
+  metadataSetId?: string
+}) => {
+  const res = await api.get('/metadata/definitions', {
+    params: {
+      ...(params?.metadataSetId
+        ? { metadataSetId: params.metadataSetId }
+        : {}),
+    },
+  })
 
-export const updateMetadataDefinition = async (id: string, data: Partial<MetadataDefinitionDto>) =>
-  (await api.put(`/metadata/definitions/${id}`, data)).data as MetadataDefinitionDto
+  return res.data as MetadataDefinitionDto[]
+}
 
-export const deleteMetadataDefinition = async (id: string) =>
-  api.delete(`/metadata/definitions/${id}`)
+export const createMetadataDefinition = async (
+  data: Partial<MetadataDefinitionDto>,
+) => {
+  const res = await api.post('/metadata/definitions', data)
+  return res.data as MetadataDefinitionDto
+}
 
-export const getMetadataValues = async (documentInstanceId: string) =>
-  (await api.get(`/metadata/values/${documentInstanceId}`)).data as MetadataValueDto[]
+export const updateMetadataDefinition = async (
+  id: string,
+  data: Partial<MetadataDefinitionDto>,
+) => {
+  const res = await api.put(`/metadata/definitions/${id}`, data)
+  return res.data as MetadataDefinitionDto
+}
+
+export const deleteMetadataDefinition = async (id: string) => {
+  return api.delete(`/metadata/definitions/${id}`)
+}
+
+export const getMetadataValues = async (documentInstanceId: string) => {
+  const res = await api.get(`/metadata/values/${documentInstanceId}`)
+  return res.data as MetadataValueDto[]
+}
 
 export const saveMetadataValues = async (
   documentInstanceId: string,
-  values: { metadataDefinitionId: string; value: any }[],
-) => api.post(`/metadata/values/${documentInstanceId}`, { values })
+  values: SaveMetadataValueDto[],
+) => {
+  const res = await api.post(`/metadata/values/${documentInstanceId}`, {
+    values,
+  })
+
+  return res.data
+}

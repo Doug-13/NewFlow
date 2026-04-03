@@ -79,7 +79,6 @@ export type User = {
   defaultProcessId?: string | null
 }
 
-/** Substitui UserEnvironmentMembership — vínculo direto usuário → conta */
 export type UserAccountMembership = {
   id: string
   accountId: string
@@ -103,7 +102,7 @@ export type UserProcessMembership = {
   updatedAt?: string
 }
 
-// ─── Organização — escopo de PROCESSO ────────────────────────────────────────
+// ─── Organização ──────────────────────────────────────────────────────────────
 
 export type OrganizationArea = {
   id: string
@@ -155,6 +154,7 @@ export type OrganizationGroup = {
   createdAt: string
   updatedAt?: string
   code?: string
+  memberIds?: string[]
 }
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
@@ -299,6 +299,7 @@ export type DocumentInstance = {
   code: string
   status: string
   workflowId: string
+  workflowName?: string
   currentStepName: string | null
   currentStepOrderIndex: number | null
   responsibleId: string
@@ -308,6 +309,20 @@ export type DocumentInstance = {
   createdAt: string
   updatedAt: string
   dueDate: string | null
+  /** Revisão do documento (ex: "00", "01", "A", "B") — gerada automaticamente */
+  revision?: string | null
+  /** ID do documento raiz desta revisão (null = é o documento original) */
+  parentDocumentId?: string | null
+  /** Steps salvos do localStorage para enriquecimento */
+  _steps?: Array<Record<string, unknown>>
+}
+
+export type TaskAction = {
+  id: string
+  label: string
+  color: string
+  outcome: string
+  requiresComment: boolean
 }
 
 export type Task = {
@@ -322,13 +337,45 @@ export type Task = {
   stepOrderIndex: number
   assignedUserId: string
   assignedUserName: string
+  assignedUserNames?: string[]
   status: string
   allowedActions: string[]
+  taskActions?: TaskAction[]
+  deadlineMode?: string
+  deadlineValue?: number | string
   dueDate: string | null
   createdAt: string
   updatedAt?: string
   completedAt: string | null
   comment: string | null
+  actionTaken?: string | null
+}
+
+export type AuditLog = {
+  id: string
+  documentInstanceId: string
+  action: string
+  stepName?: string | null
+  userName?: string | null
+  comment?: string | null
+  createdAt: string
+}
+
+export type EnvironmentConfiguration = {
+  id: string
+  accountId: string
+  tenantId: string
+  name: string
+  isDefault: boolean
+  isActive: boolean
+  codingRuleJson: { parts: Array<{ type: string; fixedValue?: string; separatorAfter?: string }> } | null
+  sequentialDigits: number
+  sequentialResetPeriod: 'never' | 'yearly' | 'monthly'
+  sequentialCurrentValue: number
+  sequentialLastPeriod: string
+  totalProcessDays: number
+  createdAt: string
+  updatedAt?: string
 }
 
 export type DashboardSummary = {
@@ -368,6 +415,8 @@ export type MockDatabase = {
   metadataValues: MetadataValue[]
   notificationTemplates: NotificationTemplateRecord[]
   dashboards: DashboardSummary[]
+  auditLogs: AuditLog[]
+  environmentConfigurations: EnvironmentConfiguration[]
 }
 
 // ─── Helpers de escopo ────────────────────────────────────────────────────────
@@ -491,20 +540,20 @@ export const MOCK_ORGANIZATION_DISCIPLINES: OrganizationDiscipline[] = [
 ]
 
 export const MOCK_ORGANIZATION_GROUPS: OrganizationGroup[] = [
-  { id: 'group-1', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', name: 'Diretoria',   description: 'Grupo da diretoria executiva',   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'DIR'  },
-  { id: 'group-2', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Gestores',    description: 'Grupo de gestores operacionais', isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'GEST' },
-  { id: 'group-3', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Operacional', description: 'Grupo operacional geral',         isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'OPER' },
-  { id: 'group-4', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',             name: 'Engenharia',  description: 'Equipe técnica',                  isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ENG'  },
+  { id: 'group-1', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', name: 'Diretoria',   description: 'Grupo da diretoria executiva',   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'DIR',  memberIds: ['user-admin', 'user-gestor'] },
+  { id: 'group-2', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Gestores',    description: 'Grupo de gestores operacionais', isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'GEST', memberIds: ['user-3', 'user-gestor'] },
+  { id: 'group-3', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Operacional', description: 'Grupo operacional geral',         isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'OPER', memberIds: ['user-2', 'user-4'] },
+  { id: 'group-4', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',             name: 'Engenharia',  description: 'Equipe técnica',                  isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ENG',  memberIds: ['user-admin'] },
 ]
 
 export const MOCK_ORGANIZATION_ROLES: OrganizationRole[] = [
-  { id: 'role-1', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', name: 'Advogado Sênior',     description: 'Responsável por revisões jurídicas', isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ADV-SR'  },
-  { id: 'role-2', accountId: 'account-1', processId: 'proc-3', processName: 'RH Corporativo',         name: 'Advogado Trabalhista', description: 'Especialista em CLT e acordos',      isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ADV-TRB' },
-  { id: 'role-3', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Analista de Compras', description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ANA-COM' },
-  { id: 'role-4', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Gerente de Compras',  description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'GER-COM' },
-  { id: 'role-5', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Controller',          description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'CTL'     },
-  { id: 'role-6', accountId: 'account-1', processId: 'proc-3', processName: 'RH Corporativo',         name: 'HRBP',                description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'HRBP'    },
-  { id: 'role-7', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',             name: 'Desenvolvedor Sênior',description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'DEV-SR'  },
+  { id: 'role-1', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', name: 'Advogado Sênior',      description: 'Responsável por revisões jurídicas', isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ADV-SR'  },
+  { id: 'role-2', accountId: 'account-1', processId: 'proc-3', processName: 'RH Corporativo',         name: 'Advogado Trabalhista',  description: 'Especialista em CLT e acordos',      isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ADV-TRB' },
+  { id: 'role-3', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Analista de Compras',   description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'ANA-COM' },
+  { id: 'role-4', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Gerente de Compras',    description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'GER-COM' },
+  { id: 'role-5', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas',   name: 'Controller',            description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'CTL'     },
+  { id: 'role-6', accountId: 'account-1', processId: 'proc-3', processName: 'RH Corporativo',         name: 'HRBP',                  description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'HRBP'    },
+  { id: 'role-7', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',             name: 'Desenvolvedor Sênior',  description: '',                                   isActive: true, createdAt: '2024-01-10T08:00:00Z', updatedAt: '2024-01-10T08:00:00Z', code: 'DEV-SR'  },
 ]
 
 export const MOCK_WORKFLOWS: Workflow[] = [
@@ -518,11 +567,11 @@ export const MOCK_WORKFLOWS: Workflow[] = [
       creation:      { userIds: [], groupIds: [], processIds: ['proc-1'], areaIds: [], disciplineIds: [], roleIds: [] },
     },
     steps: [
-      { id: 'step-1', name: 'Solicitação',        orderIndex: 0, isInitial: true,  isFinal: false, slaHours: 8,    allowedActions: ['submit'],                  receivesNotification: true,  requiredNotification: false, notificationTemplateIds: ['ntf-1'], notificationTemplateNames: ['Documento aguardando aprovação'], responsibles: [{ type: 'dynamic', name: 'Solicitante' }], metadata: [{ name: 'supplier', label: 'Fornecedor', type: 'text', required: true }, { name: 'estimated_value', label: 'Valor Estimado', type: 'currency', required: true }, { name: 'contract_type', label: 'Tipo de Contrato', type: 'select', required: true, options: ['Prestação de Serviços', 'Fornecimento', 'Locação', 'NDA'] }], transitions: [{ toStepOrderIndex: 1, triggerAction: 'submit' }] },
-      { id: 'step-2', name: 'Análise Inicial',    orderIndex: 1, isInitial: false, isFinal: false, slaHours: 16,   allowedActions: ['approve', 'return'],       receivesNotification: true,  requiredNotification: true,  notificationTemplateIds: ['ntf-1', 'ntf-2'], notificationTemplateNames: ['Documento aguardando aprovação', 'Documento devolvido para ajustes'], responsibles: [{ type: 'role', id: 'role-3', name: 'Analista de Compras' }], metadata: [], transitions: [{ toStepOrderIndex: 2, triggerAction: 'approve' }, { toStepOrderIndex: 0, triggerAction: 'return' }] },
-      { id: 'step-3', name: 'Revisão Jurídica',   orderIndex: 2, isInitial: false, isFinal: false, slaHours: 16,   allowedActions: ['approve', 'reject', 'return'], receivesNotification: true, requiredNotification: true, notificationTemplateIds: ['ntf-1', 'ntf-2'], notificationTemplateNames: ['Documento aguardando aprovação', 'Documento devolvido para ajustes'], responsibles: [{ type: 'role', id: 'role-1', name: 'Advogado Sênior' }], metadata: [{ name: 'legal_risk', label: 'Risco Jurídico', type: 'select', required: true, options: ['Baixo', 'Médio', 'Alto', 'Crítico'] }], transitions: [{ toStepOrderIndex: 3, triggerAction: 'approve' }, { toStepOrderIndex: 0, triggerAction: 'return' }] },
-      { id: 'step-4', name: 'Aprovação Gerencial', orderIndex: 3, isInitial: false, isFinal: false, slaHours: 8,   allowedActions: ['approve', 'cancel'],       receivesNotification: true,  requiredNotification: true,  notificationTemplateIds: ['ntf-1'], notificationTemplateNames: ['Documento aguardando aprovação'], responsibles: [{ type: 'role', id: 'role-4', name: 'Gerente de Compras' }], metadata: [], transitions: [{ toStepOrderIndex: 4, triggerAction: 'approve' }] },
-      { id: 'step-5', name: 'Publicação',          orderIndex: 4, isInitial: false, isFinal: true,  slaHours: null, allowedActions: ['publish'],               receivesNotification: true,  requiredNotification: false, notificationTemplateIds: ['ntf-3'], notificationTemplateNames: ['Documento publicado'], responsibles: [], metadata: [], transitions: [] },
+      { id: 'step-1', name: 'Solicitação',         orderIndex: 0, isInitial: true,  isFinal: false, slaHours: 8,    allowedActions: ['submit'],                      receivesNotification: true,  requiredNotification: false, notificationTemplateIds: ['ntf-1'], notificationTemplateNames: ['Documento aguardando aprovação'], responsibles: [{ type: 'dynamic', name: 'Solicitante' }], metadata: [{ name: 'supplier', label: 'Fornecedor', type: 'text', required: true }, { name: 'estimated_value', label: 'Valor Estimado', type: 'currency', required: true }, { name: 'contract_type', label: 'Tipo de Contrato', type: 'select', required: true, options: ['Prestação de Serviços', 'Fornecimento', 'Locação', 'NDA'] }], transitions: [{ toStepOrderIndex: 1, triggerAction: 'submit' }] },
+      { id: 'step-2', name: 'Análise Inicial',     orderIndex: 1, isInitial: false, isFinal: false, slaHours: 16,   allowedActions: ['approve', 'return'],           receivesNotification: true,  requiredNotification: true,  notificationTemplateIds: ['ntf-1', 'ntf-2'], notificationTemplateNames: ['Documento aguardando aprovação', 'Documento devolvido para ajustes'], responsibles: [{ type: 'role', id: 'role-3', name: 'Analista de Compras' }], metadata: [], transitions: [{ toStepOrderIndex: 2, triggerAction: 'approve' }, { toStepOrderIndex: 0, triggerAction: 'return' }] },
+      { id: 'step-3', name: 'Revisão Jurídica',    orderIndex: 2, isInitial: false, isFinal: false, slaHours: 16,   allowedActions: ['approve', 'reject', 'return'],  receivesNotification: true,  requiredNotification: true,  notificationTemplateIds: ['ntf-1', 'ntf-2'], notificationTemplateNames: ['Documento aguardando aprovação', 'Documento devolvido para ajustes'], responsibles: [{ type: 'role', id: 'role-1', name: 'Advogado Sênior' }], metadata: [{ name: 'legal_risk', label: 'Risco Jurídico', type: 'select', required: true, options: ['Baixo', 'Médio', 'Alto', 'Crítico'] }], transitions: [{ toStepOrderIndex: 3, triggerAction: 'approve' }, { toStepOrderIndex: 0, triggerAction: 'return' }] },
+      { id: 'step-4', name: 'Aprovação Gerencial', orderIndex: 3, isInitial: false, isFinal: false, slaHours: 8,    allowedActions: ['approve', 'cancel'],           receivesNotification: true,  requiredNotification: true,  notificationTemplateIds: ['ntf-1'], notificationTemplateNames: ['Documento aguardando aprovação'], responsibles: [{ type: 'role', id: 'role-4', name: 'Gerente de Compras' }], metadata: [], transitions: [{ toStepOrderIndex: 4, triggerAction: 'approve' }] },
+      { id: 'step-5', name: 'Publicação',           orderIndex: 4, isInitial: false, isFinal: true,  slaHours: null, allowedActions: ['publish'],                     receivesNotification: true,  requiredNotification: false, notificationTemplateIds: ['ntf-3'], notificationTemplateNames: ['Documento publicado'], responsibles: [], metadata: [], transitions: [] },
     ],
   },
   {
@@ -544,8 +593,8 @@ export const MOCK_WORKFLOWS: Workflow[] = [
 
 export const MOCK_METADATA_SETS: MetadataSet[] = [
   { id: 'mset-1', accountId: 'account-1', scopeLevel: 'account', name: 'Dados do Contrato', code: 'contract_data', description: 'Campos padrão de contratos', isActive: true, orderIndex: 1 },
-  { id: 'mset-2', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas', scopeLevel: 'process', name: 'Dados de Compra',    code: 'purchase_data',  description: 'Campos do processo de compras',          isActive: true, orderIndex: 2 },
-  { id: 'mset-3', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',           scopeLevel: 'process', name: 'Dados Técnicos',     code: 'technical_data', description: 'Campos de documentação técnica',         isActive: true, orderIndex: 3 },
+  { id: 'mset-2', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas', scopeLevel: 'process', name: 'Dados de Compra',  code: 'purchase_data',  description: 'Campos do processo de compras',  isActive: true, orderIndex: 2 },
+  { id: 'mset-3', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',           scopeLevel: 'process', name: 'Dados Técnicos',   code: 'technical_data', description: 'Campos de documentação técnica', isActive: true, orderIndex: 3 },
 ]
 
 export const MOCK_METADATA_DEFINITIONS: MetadataDefinition[] = [
@@ -555,62 +604,152 @@ export const MOCK_METADATA_DEFINITIONS: MetadataDefinition[] = [
   { id: 'mdef-4', accountId: 'account-1', scopeLevel: 'account', metadataSetId: 'mset-1', metadataSetName: 'Dados do Contrato', name: 'validity_start',       label: 'Início da Vigência',       fieldType: 'date',     isRequired: true,  isReadOnly: false, isActive: true, orderIndex: 4, options: [] },
   { id: 'mdef-5', accountId: 'account-1', scopeLevel: 'account', metadataSetId: 'mset-1', metadataSetName: 'Dados do Contrato', name: 'validity_end',         label: 'Fim da Vigência',          fieldType: 'date',     isRequired: false, isReadOnly: false, isActive: true, orderIndex: 5, options: [] },
   { id: 'mdef-6', accountId: 'account-1', scopeLevel: 'account', metadataSetId: 'mset-1', metadataSetName: 'Dados do Contrato', name: 'legal_risk',           label: 'Risco Jurídico',           fieldType: 'select',   isRequired: false, isReadOnly: false, isActive: true, orderIndex: 6, options: [{ value: 'low', label: 'Baixo' }, { value: 'medium', label: 'Médio' }, { value: 'high', label: 'Alto' }, { value: 'critical', label: 'Crítico' }] },
-  { id: 'mdef-7', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas', scopeLevel: 'process', metadataSetId: 'mset-2', metadataSetName: 'Dados de Compra',  name: 'item_description',    label: 'Descrição do Item',     fieldType: 'text',   isRequired: true,  isReadOnly: false, isActive: true, orderIndex: 1, options: [] },
-  { id: 'mdef-8', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas', scopeLevel: 'process', metadataSetId: 'mset-2', metadataSetName: 'Dados de Compra',  name: 'quantity',            label: 'Quantidade',            fieldType: 'number', isRequired: true,  isReadOnly: false, isActive: true, orderIndex: 2, options: [] },
-  { id: 'mdef-9', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',           scopeLevel: 'process', metadataSetId: 'mset-3', metadataSetName: 'Dados Técnicos',   name: 'engineering_revision', label: 'Revisão de Engenharia', fieldType: 'text',   isRequired: true,  isReadOnly: false, isActive: true, orderIndex: 1, options: [] },
+  { id: 'mdef-7', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas', scopeLevel: 'process', metadataSetId: 'mset-2', metadataSetName: 'Dados de Compra', name: 'item_description',    label: 'Descrição do Item',     fieldType: 'text',   isRequired: true,  isReadOnly: false, isActive: true, orderIndex: 1, options: [] },
+  { id: 'mdef-8', accountId: 'account-1', processId: 'proc-2', processName: 'Compras Estratégicas', scopeLevel: 'process', metadataSetId: 'mset-2', metadataSetName: 'Dados de Compra', name: 'quantity',            label: 'Quantidade',            fieldType: 'number', isRequired: true,  isReadOnly: false, isActive: true, orderIndex: 2, options: [] },
+  { id: 'mdef-9', accountId: 'account-1', processId: 'proc-5', processName: 'Engenharia',           scopeLevel: 'process', metadataSetId: 'mset-3', metadataSetName: 'Dados Técnicos',  name: 'engineering_revision', label: 'Revisão de Engenharia', fieldType: 'text',   isRequired: true,  isReadOnly: false, isActive: true, orderIndex: 1, options: [] },
 ]
 
 export const MOCK_METADATA_VALUES: MetadataValue[] = [
-  { id: 'mval-1', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1', metadataDefinitionId: 'mdef-1', name: 'supplier',        label: 'Fornecedor / Contraparte', fieldType: 'text',     isRequired: true, value: 'Infra Corp Tecnologia LTDA' },
-  { id: 'mval-2', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1', metadataDefinitionId: 'mdef-2', name: 'estimated_value', label: 'Valor Estimado',           fieldType: 'currency', isRequired: true, value: 48000 },
-  { id: 'mval-3', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1', metadataDefinitionId: 'mdef-3', name: 'contract_type',   label: 'Tipo de Contrato',         fieldType: 'select',   isRequired: true, value: 'service' },
-  { id: 'mval-4', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-2', metadataDefinitionId: 'mdef-1', name: 'supplier',        label: 'Fornecedor / Contraparte', fieldType: 'text',     isRequired: true, value: 'Deloitte Consultores Ltda' },
-  { id: 'mval-5', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-2', metadataDefinitionId: 'mdef-2', name: 'estimated_value', label: 'Valor Estimado',           fieldType: 'currency', isRequired: true, value: 120000 },
+  { id: 'mval-1', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1',      metadataDefinitionId: 'mdef-1', name: 'supplier',        label: 'Fornecedor / Contraparte', fieldType: 'text',     isRequired: true, value: 'Infra Corp Tecnologia LTDA' },
+  { id: 'mval-2', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1',      metadataDefinitionId: 'mdef-2', name: 'estimated_value', label: 'Valor Estimado',           fieldType: 'currency', isRequired: true, value: 48000 },
+  { id: 'mval-3', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1',      metadataDefinitionId: 'mdef-3', name: 'contract_type',   label: 'Tipo de Contrato',         fieldType: 'select',   isRequired: true, value: 'service' },
+  { id: 'mval-4', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-2',      metadataDefinitionId: 'mdef-1', name: 'supplier',        label: 'Fornecedor / Contraparte', fieldType: 'text',     isRequired: true, value: 'Deloitte Consultores Ltda' },
+  { id: 'mval-5', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-2',      metadataDefinitionId: 'mdef-2', name: 'estimated_value', label: 'Valor Estimado',           fieldType: 'currency', isRequired: true, value: 120000 },
+  // Metadados da revisão 01 do doc-1 (herdados do original)
+  { id: 'mval-6', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1-rev1', metadataDefinitionId: 'mdef-1', name: 'supplier',        label: 'Fornecedor / Contraparte', fieldType: 'text',     isRequired: true, value: 'Infra Corp Tecnologia LTDA' },
+  { id: 'mval-7', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1-rev1', metadataDefinitionId: 'mdef-2', name: 'estimated_value', label: 'Valor Estimado',           fieldType: 'currency', isRequired: true, value: 52000 },
+  { id: 'mval-8', accountId: 'account-1', processId: 'proc-1', documentInstanceId: 'doc-1-rev1', metadataDefinitionId: 'mdef-3', name: 'contract_type',   label: 'Tipo de Contrato',         fieldType: 'select',   isRequired: true, value: 'service' },
 ]
 
 export const MOCK_NOTIFICATION_TEMPLATES: NotificationTemplateRecord[] = [
-  { id: 'ntf-1', accountId: 'account-1', scopeLevel: 'account',  name: 'Documento aguardando aprovação',  code: 'DOCUMENTO_AGUARDANDO_APROVACAO',  description: 'Enviado quando o documento entra em etapa de aprovação.', channel: 'email',    subject: 'Documento {{documento}} aguardando sua aprovação', body: 'Olá {{usuario}}, o documento {{documento}} aguarda ação na etapa {{etapa}}.', isActive: true, createdAt: '2024-11-01T09:00:00Z', updatedAt: '2024-11-01T09:00:00Z' },
-  { id: 'ntf-2', accountId: 'account-1', scopeLevel: 'account',  name: 'Documento devolvido para ajustes', code: 'DOCUMENTO_DEVOLVIDO_PARA_AJUSTES', description: 'Utilizado quando o documento retorna para a etapa inicial.', channel: 'system', subject: '', body: 'O documento {{documento}} foi devolvido para ajustes na etapa {{etapa}}.', isActive: true, createdAt: '2024-11-02T10:30:00Z', updatedAt: '2024-11-02T10:30:00Z' },
+  { id: 'ntf-1', accountId: 'account-1', scopeLevel: 'account',  name: 'Documento aguardando aprovação',   code: 'DOCUMENTO_AGUARDANDO_APROVACAO',  description: 'Enviado quando o documento entra em etapa de aprovação.',     channel: 'email',    subject: 'Documento {{documento}} aguardando sua aprovação', body: 'Olá {{usuario}}, o documento {{documento}} aguarda ação na etapa {{etapa}}.', isActive: true, createdAt: '2024-11-01T09:00:00Z', updatedAt: '2024-11-01T09:00:00Z' },
+  { id: 'ntf-2', accountId: 'account-1', scopeLevel: 'account',  name: 'Documento devolvido para ajustes', code: 'DOCUMENTO_DEVOLVIDO_PARA_AJUSTES', description: 'Utilizado quando o documento retorna para a etapa inicial.', channel: 'system',   subject: '', body: 'O documento {{documento}} foi devolvido para ajustes na etapa {{etapa}}.', isActive: true, createdAt: '2024-11-02T10:30:00Z', updatedAt: '2024-11-02T10:30:00Z' },
   { id: 'ntf-3', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', scopeLevel: 'process', name: 'Documento publicado', code: 'DOCUMENTO_PUBLICADO', description: 'Comunica a publicação ao responsável.', channel: 'whatsapp', subject: '', body: 'Olá {{usuario}}, o documento {{documento}} foi publicado.', isActive: true, createdAt: '2024-11-03T14:00:00Z', updatedAt: '2024-11-03T14:00:00Z' },
 ]
 
+// ─── Documentos com revisão ───────────────────────────────────────────────────
+// doc-1 = Revisão 00 (publicada/original)
+// doc-1-rev1 = Revisão 01 (em andamento, é revisão do doc-1)
+// Os demais não possuem revisões adicionais
+
 export const MOCK_DOCUMENT_INSTANCES: DocumentInstance[] = [
-  { id: 'doc-1', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', title: 'Contrato de Manutenção de TI - Infra Corp',     code: 'CTR-2024-0001', status: 'in_progress', workflowId: 'wf-1', currentStepName: 'Revisão Jurídica',   currentStepOrderIndex: 2,    responsibleId: 'user-1', responsibleName: 'Carlos Mendes',    createdById: 'user-2', createdByName: 'Fernanda Oliveira', createdAt: '2024-11-01T09:00:00Z', updatedAt: '2024-11-05T14:30:00Z', dueDate: '2024-11-15T23:59:00Z' },
-  { id: 'doc-2', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', title: 'Contrato de Consultoria Financeira - Deloitte', code: 'CTR-2024-0002', status: 'in_progress', workflowId: 'wf-1', currentStepName: 'Aprovação Gerencial', currentStepOrderIndex: 3,    responsibleId: 'user-3', responsibleName: 'Ricardo Alves',    createdById: 'user-4', createdByName: 'Ana Paula Lima',    createdAt: '2024-10-20T10:00:00Z', updatedAt: '2024-11-06T11:00:00Z', dueDate: '2024-11-10T23:59:00Z' },
-  { id: 'doc-3', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', title: 'NDA com Startup XYZ',                          code: 'CTR-2024-0003', status: 'draft',       workflowId: 'wf-1', currentStepName: 'Solicitação',        currentStepOrderIndex: 0,    responsibleId: 'user-1', responsibleName: 'Carlos Mendes',    createdById: 'user-1', createdByName: 'Carlos Mendes',     createdAt: '2024-11-07T08:00:00Z', updatedAt: '2024-11-07T08:00:00Z', dueDate: null },
-  { id: 'doc-4', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', title: 'Contrato de Locação de Equipamentos',          code: 'CTR-2024-0004', status: 'published',   workflowId: 'wf-1', currentStepName: null,                 currentStepOrderIndex: null, responsibleId: 'user-2', responsibleName: 'Fernanda Oliveira', createdById: 'user-2', createdByName: 'Fernanda Oliveira', createdAt: '2024-09-01T08:00:00Z', updatedAt: '2024-10-15T16:00:00Z', dueDate: '2024-10-20T23:59:00Z' },
-  { id: 'doc-5', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', title: 'Contrato Parceria Comercial - Global Trade',   code: 'CTR-2024-0005', status: 'rejected',    workflowId: 'wf-1', currentStepName: null,                 currentStepOrderIndex: null, responsibleId: 'user-1', responsibleName: 'Carlos Mendes',    createdById: 'user-4', createdByName: 'Ana Paula Lima',    createdAt: '2024-10-05T08:00:00Z', updatedAt: '2024-10-28T09:00:00Z', dueDate: '2024-10-30T23:59:00Z' },
+  {
+    id: 'doc-1',
+    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos',
+    title: 'Contrato de Manutenção de TI - Infra Corp',
+    code: 'CTR-2024-0001',
+    revision: '00',
+    parentDocumentId: null,
+    status: 'published',
+    workflowId: 'wf-1',
+    currentStepName: null, currentStepOrderIndex: null,
+    responsibleId: 'user-1', responsibleName: 'Carlos Mendes',
+    createdById: 'user-2', createdByName: 'Fernanda Oliveira',
+    createdAt: '2024-11-01T09:00:00Z', updatedAt: '2024-11-05T14:30:00Z', dueDate: '2024-11-15T23:59:00Z',
+  },
+  {
+    id: 'doc-1-rev1',
+    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos',
+    title: 'Contrato de Manutenção de TI - Infra Corp',
+    code: 'CTR-2024-0006',
+    revision: '01',
+    parentDocumentId: 'doc-1',
+    status: 'in_progress',
+    workflowId: 'wf-1',
+    currentStepName: 'Revisão Jurídica', currentStepOrderIndex: 2,
+    responsibleId: 'user-1', responsibleName: 'Carlos Mendes',
+    createdById: 'user-2', createdByName: 'Fernanda Oliveira',
+    createdAt: '2024-12-01T09:00:00Z', updatedAt: '2024-12-05T14:30:00Z', dueDate: null,
+  },
+  {
+    id: 'doc-2',
+    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos',
+    title: 'Contrato de Consultoria Financeira - Deloitte',
+    code: 'CTR-2024-0002',
+    revision: '00',
+    parentDocumentId: null,
+    status: 'in_progress',
+    workflowId: 'wf-1',
+    currentStepName: 'Aprovação Gerencial', currentStepOrderIndex: 3,
+    responsibleId: 'user-3', responsibleName: 'Ricardo Alves',
+    createdById: 'user-4', createdByName: 'Ana Paula Lima',
+    createdAt: '2024-10-20T10:00:00Z', updatedAt: '2024-11-06T11:00:00Z', dueDate: '2024-11-10T23:59:00Z',
+  },
+  {
+    id: 'doc-3',
+    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos',
+    title: 'NDA com Startup XYZ',
+    code: 'CTR-2024-0003',
+    revision: null,
+    parentDocumentId: null,
+    status: 'draft',
+    workflowId: 'wf-1',
+    currentStepName: 'Solicitação', currentStepOrderIndex: 0,
+    responsibleId: 'user-1', responsibleName: 'Carlos Mendes',
+    createdById: 'user-1', createdByName: 'Carlos Mendes',
+    createdAt: '2024-11-07T08:00:00Z', updatedAt: '2024-11-07T08:00:00Z', dueDate: null,
+  },
+  {
+    id: 'doc-4',
+    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos',
+    title: 'Contrato de Locação de Equipamentos',
+    code: 'CTR-2024-0004',
+    revision: '00',
+    parentDocumentId: null,
+    status: 'published',
+    workflowId: 'wf-1',
+    currentStepName: null, currentStepOrderIndex: null,
+    responsibleId: 'user-2', responsibleName: 'Fernanda Oliveira',
+    createdById: 'user-2', createdByName: 'Fernanda Oliveira',
+    createdAt: '2024-09-01T08:00:00Z', updatedAt: '2024-10-15T16:00:00Z', dueDate: '2024-10-20T23:59:00Z',
+  },
+  {
+    id: 'doc-5',
+    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos',
+    title: 'Contrato Parceria Comercial - Global Trade',
+    code: 'CTR-2024-0005',
+    revision: '00',
+    parentDocumentId: null,
+    status: 'rejected',
+    workflowId: 'wf-1',
+    currentStepName: null, currentStepOrderIndex: null,
+    responsibleId: 'user-1', responsibleName: 'Carlos Mendes',
+    createdById: 'user-4', createdByName: 'Ana Paula Lima',
+    createdAt: '2024-10-05T08:00:00Z', updatedAt: '2024-10-28T09:00:00Z', dueDate: '2024-10-30T23:59:00Z',
+  },
 ]
 
 export const MOCK_TASKS: Task[] = [
-  { id: 'task-1', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', documentInstanceId: 'doc-1', documentTitle: 'Contrato de Manutenção de TI - Infra Corp',     documentCode: 'CTR-2024-0001', stepName: 'Revisão Jurídica',   stepOrderIndex: 2, assignedUserId: 'user-1', assignedUserName: 'Carlos Mendes',    status: 'pending',   allowedActions: ['approve', 'reject', 'return'], dueDate: '2024-11-08T23:59:00Z', createdAt: '2024-11-05T14:30:00Z', completedAt: null,                   comment: null },
-  { id: 'task-2', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', documentInstanceId: 'doc-2', documentTitle: 'Contrato de Consultoria Financeira - Deloitte', documentCode: 'CTR-2024-0002', stepName: 'Aprovação Gerencial', stepOrderIndex: 3, assignedUserId: 'user-3', assignedUserName: 'Ricardo Alves',   status: 'pending',   allowedActions: ['approve', 'cancel'],           dueDate: '2024-11-07T23:59:00Z', createdAt: '2024-11-05T10:00:00Z', completedAt: null,                   comment: null },
-  { id: 'task-3', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', documentInstanceId: 'doc-4', documentTitle: 'Contrato de Locação de Equipamentos',           documentCode: 'CTR-2024-0004', stepName: 'Publicação',         stepOrderIndex: 5, assignedUserId: 'user-2', assignedUserName: 'Fernanda Oliveira',status: 'completed', allowedActions: [],                              dueDate: '2024-10-20T23:59:00Z', createdAt: '2024-10-14T09:00:00Z', completedAt: '2024-10-15T16:00:00Z', comment: 'Publicado com sucesso.' },
+  { id: 'task-1', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', documentInstanceId: 'doc-1-rev1', documentTitle: 'Contrato de Manutenção de TI - Infra Corp',     documentCode: 'CTR-2024-0006', stepName: 'Revisão Jurídica',   stepOrderIndex: 2, assignedUserId: 'user-1', assignedUserName: 'Carlos Mendes',     status: 'pending',   allowedActions: ['approve', 'reject', 'return'], dueDate: '2024-12-08T23:59:00Z', createdAt: '2024-12-05T14:30:00Z', completedAt: null,                   comment: null },
+  { id: 'task-2', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', documentInstanceId: 'doc-2',      documentTitle: 'Contrato de Consultoria Financeira - Deloitte', documentCode: 'CTR-2024-0002', stepName: 'Aprovação Gerencial', stepOrderIndex: 3, assignedUserId: 'user-3', assignedUserName: 'Ricardo Alves',    status: 'pending',   allowedActions: ['approve', 'cancel'],           dueDate: '2024-11-07T23:59:00Z', createdAt: '2024-11-05T10:00:00Z', completedAt: null,                   comment: null },
+  { id: 'task-3', accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', documentInstanceId: 'doc-4',      documentTitle: 'Contrato de Locação de Equipamentos',           documentCode: 'CTR-2024-0004', stepName: 'Publicação',         stepOrderIndex: 5, assignedUserId: 'user-2', assignedUserName: 'Fernanda Oliveira', status: 'completed', allowedActions: [],                              dueDate: '2024-10-20T23:59:00Z', createdAt: '2024-10-14T09:00:00Z', completedAt: '2024-10-15T16:00:00Z', comment: 'Publicado com sucesso.' },
 ]
 
 export const MOCK_DASHBOARDS: DashboardSummary[] = [
-  { id: 'dashboard-account-1', accountId: 'account-1', scopeLevel: 'account',  totalDocuments: 5, byStatus: { draft: 1, in_progress: 2, published: 1, rejected: 1, cancelled: 0 }, pendingTasks: 2, overdueTasks: 1, slaCompliance: 78 },
-  { id: 'dashboard-proc-1',    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', scopeLevel: 'process', totalDocuments: 5, byStatus: { draft: 1, in_progress: 2, published: 1, rejected: 1, cancelled: 0 }, pendingTasks: 2, overdueTasks: 1, slaCompliance: 78 },
+  { id: 'dashboard-account-1', accountId: 'account-1', scopeLevel: 'account',  totalDocuments: 6, byStatus: { draft: 1, in_progress: 2, published: 2, rejected: 1, cancelled: 0 }, pendingTasks: 2, overdueTasks: 1, slaCompliance: 78 },
+  { id: 'dashboard-proc-1',    accountId: 'account-1', processId: 'proc-1', processName: 'Contratos Corporativos', scopeLevel: 'process', totalDocuments: 6, byStatus: { draft: 1, in_progress: 2, published: 2, rejected: 1, cancelled: 0 }, pendingTasks: 2, overdueTasks: 1, slaCompliance: 78 },
 ]
 
 export const INITIAL_MOCK_DB: MockDatabase = {
-  platformAdmins:          structuredClone(MOCK_PLATFORM_ADMINS),
-  accounts:                structuredClone(MOCK_ACCOUNTS),
-  accountModules:          structuredClone(MOCK_ACCOUNT_MODULES),
-  processes:               structuredClone(MOCK_PROCESSES),
-  users:                   structuredClone(MOCK_USERS),
-  userAccountMemberships:  structuredClone(MOCK_USER_ACCOUNT_MEMBERSHIPS),
-  userProcessMemberships:  structuredClone(MOCK_USER_PROCESS_MEMBERSHIPS),
-  organizationAreas:       structuredClone(MOCK_ORGANIZATION_AREAS),
-  organizationDisciplines: structuredClone(MOCK_ORGANIZATION_DISCIPLINES),
-  organizationRoles:       structuredClone(MOCK_ORGANIZATION_ROLES),
-  organizationGroups:      structuredClone(MOCK_ORGANIZATION_GROUPS),
-  documentInstances:       structuredClone(MOCK_DOCUMENT_INSTANCES),
-  tasks:                   structuredClone(MOCK_TASKS),
-  workflows:               structuredClone(MOCK_WORKFLOWS),
-  metadataSets:            structuredClone(MOCK_METADATA_SETS),
-  metadataDefinitions:     structuredClone(MOCK_METADATA_DEFINITIONS),
-  metadataValues:          structuredClone(MOCK_METADATA_VALUES),
-  notificationTemplates:   structuredClone(MOCK_NOTIFICATION_TEMPLATES),
-  dashboards:              structuredClone(MOCK_DASHBOARDS),
+  platformAdmins:            structuredClone(MOCK_PLATFORM_ADMINS),
+  accounts:                  structuredClone(MOCK_ACCOUNTS),
+  accountModules:            structuredClone(MOCK_ACCOUNT_MODULES),
+  processes:                 structuredClone(MOCK_PROCESSES),
+  users:                     structuredClone(MOCK_USERS),
+  userAccountMemberships:    structuredClone(MOCK_USER_ACCOUNT_MEMBERSHIPS),
+  userProcessMemberships:    structuredClone(MOCK_USER_PROCESS_MEMBERSHIPS),
+  organizationAreas:         structuredClone(MOCK_ORGANIZATION_AREAS),
+  organizationDisciplines:   structuredClone(MOCK_ORGANIZATION_DISCIPLINES),
+  organizationRoles:         structuredClone(MOCK_ORGANIZATION_ROLES),
+  organizationGroups:        structuredClone(MOCK_ORGANIZATION_GROUPS),
+  documentInstances:         structuredClone(MOCK_DOCUMENT_INSTANCES),
+  tasks:                     structuredClone(MOCK_TASKS),
+  workflows:                 structuredClone(MOCK_WORKFLOWS),
+  metadataSets:              structuredClone(MOCK_METADATA_SETS),
+  metadataDefinitions:       structuredClone(MOCK_METADATA_DEFINITIONS),
+  metadataValues:            structuredClone(MOCK_METADATA_VALUES),
+  notificationTemplates:     structuredClone(MOCK_NOTIFICATION_TEMPLATES),
+  dashboards:                structuredClone(MOCK_DASHBOARDS),
+  auditLogs:                 [],
+  environmentConfigurations: [],
 }

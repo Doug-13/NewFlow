@@ -3,16 +3,22 @@ import { Card, Empty, Typography } from 'antd'
 import type { WorkflowActivityConfig, WorkflowElementConfig, WorkflowScopedBase } from '../storage'
 import type { BpmnElementSummary } from '../studioValidation'
 
-import { ActivityConfigPanel } from './ActivityConfigPanel'
-import { EndEventConfigPanel } from './EndEventConfigPanel'
-import { FlowConfigPanel } from './FlowConfigPanel'
-import { GatewayConfigPanel } from './GatewayConfigPanel'
+import { ActivityConfigPanel }          from './ActivityConfigPanel'
+import { ConditionalEventConfigPanel }  from './Conditionaleventconfigpanel'
+import { EndEventConfigPanel }          from './EndEventConfigPanel'
+import { FlowConfigPanel }              from './FlowConfigPanel'
+import { GatewayConfigPanel }           from './GatewayConfigPanel'
+import { MessageEventConfigPanel }      from './Messageeventconfigpanel'
 import { NotificationEventConfigPanel } from './Notificationeventconfigpanel'
-import { SystemTaskConfigPanel } from './Systemtaskconfigpanel'
-import { StartEventConfigPanel } from './StartEventConfigPanel'
-import { SubProcessConfigPanel } from './SubProcessConfigPanel'
+import { SignalEventConfigPanel }       from './Signaleventconfigpanel'
+import { StartEventConfigPanel }        from './StartEventConfigPanel'
+import { SubProcessConfigPanel }        from './SubProcessConfigPanel'
+import { SystemTaskConfigPanel }        from './Systemtaskconfigpanel'
+import { TimerEventConfigPanel }        from './Timereventconfigpanel'
 
 const { Text } = Typography
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type WorkflowElementConfigPanelProps = {
   workflowId: string
@@ -20,43 +26,47 @@ type WorkflowElementConfigPanelProps = {
   selectedElement: BpmnElementSummary | null
   initialConfig: WorkflowElementConfig | null
   elementConfigs: WorkflowElementConfig[]
-  /**
-   * Contexto de escopo do workflow pai.
-   * Necessário porque WorkflowElementConfig extende WorkflowScopedBase
-   * e exige accountId + scopeLevel em todos os saves.
-   */
-  scopeContext: Pick<WorkflowScopedBase, 'accountId' | 'scopeLevel' | 'accountName' | 'processId' | 'processName' | 'tenantId'>
+  scopeContext: Pick<
+    WorkflowScopedBase,
+    'accountId' | 'scopeLevel' | 'accountName' | 'processId' | 'processName' | 'tenantId'
+  >
   onSave: (
     values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>,
   ) => void
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function toActivityConfig(cfg: WorkflowElementConfig): WorkflowActivityConfig {
   return {
-    id: cfg.id,
-    workflowId: cfg.workflowId,
-    elementId: cfg.elementId,
+    id:          cfg.id,
+    workflowId:  cfg.workflowId,
+    elementId:   cfg.elementId,
     elementType: cfg.elementType,
     elementName: cfg.elementName,
-    createdAt: cfg.createdAt,
-    updatedAt: cfg.updatedAt,
-    // Propaga scope
-    accountId: cfg.accountId,
+    createdAt:   cfg.createdAt,
+    updatedAt:   cfg.updatedAt,
+    accountId:   cfg.accountId,
     accountName: cfg.accountName,
-    scopeLevel: cfg.scopeLevel,
-    processId: cfg.processId,
+    scopeLevel:  cfg.scopeLevel,
+    processId:   cfg.processId,
     processName: cfg.processName,
-    tenantId: cfg.tenantId,
+    tenantId:    cfg.tenantId,
     ...(cfg.config as object),
   } as WorkflowActivityConfig
 }
 
 function resolveActivityPanel(elementType: string): 'subprocess' | 'default' {
-  if (elementType === 'bpmn:SubProcess' || elementType === 'bpmn:CallActivity') {
+  if (
+    elementType === 'bpmn:SubProcess' ||
+    elementType === 'bpmn:CallActivity'
+  ) {
     return 'subprocess'
   }
   return 'default'
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function WorkflowElementConfigPanel({
   workflowId,
@@ -68,19 +78,12 @@ export function WorkflowElementConfigPanel({
   onSave,
 }: WorkflowElementConfigPanelProps) {
 
-  /**
-   * Wrapper que injeta os campos de scope obrigatórios antes de repassar
-   * para o onSave do WorkflowStudioPage.
-   *
-   * Aceita um objeto parcial (sem accountId/scopeLevel) porque esses campos
-   * são adicionados aqui — os painéis filhos não precisam conhecê-los.
-   */
+  // Injeta o escopo completo em qualquer payload salvo pelos painéis filhos
   const onSaveWithScope = (
     values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt' | 'accountId' | 'scopeLevel' | 'accountName' | 'processId' | 'processName' | 'tenantId'>
       & Partial<Pick<WorkflowElementConfig, 'accountId' | 'scopeLevel' | 'accountName' | 'processId' | 'processName' | 'tenantId'>>,
   ) => {
     onSave({
-      // scope injetado — pode ser sobrescrito por valores vindos do filho
       accountId:   scopeContext.accountId,
       accountName: scopeContext.accountName,
       scopeLevel:  scopeContext.scopeLevel,
@@ -91,33 +94,64 @@ export function WorkflowElementConfigPanel({
     } as Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>)
   }
 
+  // ── Nenhum elemento selecionado ───────────────────────────────────────────
   if (!selectedElement) {
     return (
       <Card variant="borderless" style={{ borderRadius: 18 }}>
-        <Empty description={<Text type="secondary">Clique em um elemento do diagrama para configurá-lo</Text>} />
+        <Empty
+          description={
+            <Text type="secondary">
+              Clique em um elemento do diagrama para configurá-lo
+            </Text>
+          }
+        />
       </Card>
     )
   }
 
+  // ── Elemento não configurável ─────────────────────────────────────────────
   if (!selectedElement.isConfigurable) {
     return (
       <Card variant="borderless" style={{ borderRadius: 18 }}>
-        <Empty description={<Text type="secondary">Este tipo de elemento não possui configuração</Text>} />
+        <Empty
+          description={
+            <Text type="secondary">
+              Este tipo de elemento não possui configuração
+            </Text>
+          }
+        />
       </Card>
     )
   }
 
+  // ── Roteamento por kind ───────────────────────────────────────────────────
   switch (selectedElement.kind) {
+
+    // ── Evento de início ────────────────────────────────────────────────────
     case 'start':
       return (
         <StartEventConfigPanel
           workflowId={workflowId}
+          scopeContext={scopeContext}
           selectedElement={selectedElement}
           initialConfig={initialConfig}
           onSave={onSaveWithScope}
         />
       )
 
+    // ── Evento de fim ────────────────────────────────────────────────────────
+    case 'end':
+      return (
+        <EndEventConfigPanel
+          workflowId={workflowId}
+          scopeContext={scopeContext}
+          selectedElement={selectedElement}
+          initialConfig={initialConfig}
+          onSave={onSaveWithScope}
+        />
+      )
+
+    // ── Notificação (legado — NotificationEvent do Workflow Studio antigo) ──
     case 'notification':
       return (
         <NotificationEventConfigPanel
@@ -128,6 +162,7 @@ export function WorkflowElementConfigPanel({
         />
       )
 
+    // ── Tarefa de sistema ────────────────────────────────────────────────────
     case 'system-task':
       return (
         <SystemTaskConfigPanel
@@ -138,8 +173,57 @@ export function WorkflowElementConfigPanel({
         />
       )
 
+    // ── Message Intermediate Catch Event — notificações ─────────────────────
+    // bpmn:IntermediateCatchEvent com bpmn:MessageEventDefinition
+    case 'message':
+      return (
+        <MessageEventConfigPanel
+          workflowId={workflowId}
+          selectedElement={selectedElement}
+          initialConfig={initialConfig}
+          onSave={onSaveWithScope}
+        />
+      )
+
+    // ── Timer Intermediate Catch Event — evento temporal ─────────────────────
+    // bpmn:IntermediateCatchEvent com bpmn:TimerEventDefinition
+    case 'timer':
+      return (
+        <TimerEventConfigPanel
+          workflowId={workflowId}
+          selectedElement={selectedElement}
+          initialConfig={initialConfig}
+          onSave={onSaveWithScope}
+        />
+      )
+
+    // ── Signal Intermediate Throw Event — sinal para outro fluxo ────────────
+    // bpmn:IntermediateThrowEvent com bpmn:SignalEventDefinition
+    case 'signal':
+      return (
+        <SignalEventConfigPanel
+          workflowId={workflowId}
+          selectedElement={selectedElement}
+          initialConfig={initialConfig}
+          onSave={onSaveWithScope}
+        />
+      )
+
+    // ── Conditional Intermediate Catch Event — criar revisão ─────────────────
+    // bpmn:IntermediateCatchEvent com bpmn:ConditionalEventDefinition
+    case 'conditional':
+      return (
+        <ConditionalEventConfigPanel
+          workflowId={workflowId}
+          selectedElement={selectedElement}
+          initialConfig={initialConfig}
+          onSave={onSaveWithScope}
+        />
+      )
+
+    // ── Atividade (task / subprocess / call activity) ────────────────────────
     case 'activity': {
-      const panel = resolveActivityPanel(selectedElement.type)
+      const panel         = resolveActivityPanel(selectedElement.type)
       const activityConfig =
         initialConfig?.kind === 'activity' ? toActivityConfig(initialConfig) : null
 
@@ -149,16 +233,12 @@ export function WorkflowElementConfigPanel({
             workflowId={workflowId}
             selectedElement={selectedElement}
             initialConfig={activityConfig}
-            onSave={(values) => {
-              onSaveWithScope({
-                workflowId,
-                elementId:   selectedElement.id,
-                elementType: selectedElement.type,
-                elementName: selectedElement.name,
-                kind: 'activity',
-                config: values as any,
-              })
-            }}
+            /**
+             * SubProcessConfigPanel.handleSubmit já monta o ElementConfigSavePayload
+             * completo: { workflowId, elementId, elementType, elementName, kind:'activity',
+             * config: {...} } — passamos direto para onSaveWithScope.
+             */
+            onSave={(values) => onSaveWithScope(values)}
           />
         )
       }
@@ -169,20 +249,17 @@ export function WorkflowElementConfigPanel({
           scopeContext={scopeContext}
           selectedElement={selectedElement}
           initialConfig={activityConfig}
-          onSave={(activityValues) => {
-            onSaveWithScope({
-              workflowId,
-              elementId:   selectedElement.id,
-              elementType: selectedElement.type,
-              elementName: selectedElement.name,
-              kind: 'activity',
-              config: activityValues as any,
-            })
-          }}
+          /**
+           * ActivityConfigPanel.handleSubmit já monta o ElementConfigSavePayload
+           * completo: { workflowId, elementId, elementType, elementName, kind:'activity',
+           * config: { assignmentMode, actions... } } — passamos direto.
+           */
+          onSave={(activityValues) => onSaveWithScope(activityValues)}
         />
       )
     }
 
+    // ── Gateway ───────────────────────────────────────────────────────────────
     case 'gateway':
       return (
         <GatewayConfigPanel
@@ -195,6 +272,7 @@ export function WorkflowElementConfigPanel({
         />
       )
 
+    // ── Fluxo de sequência ────────────────────────────────────────────────────
     case 'flow':
       return (
         <FlowConfigPanel
@@ -205,20 +283,17 @@ export function WorkflowElementConfigPanel({
         />
       )
 
-    case 'end':
-      return (
-        <EndEventConfigPanel
-          workflowId={workflowId}
-          selectedElement={selectedElement}
-          initialConfig={initialConfig}
-          onSave={onSaveWithScope}
-        />
-      )
-
+    // ── Elemento não reconhecido ──────────────────────────────────────────────
     default:
       return (
         <Card variant="borderless" style={{ borderRadius: 18 }}>
-          <Empty description="Elemento não reconhecido" />
+          <Empty
+            description={
+              <Text type="secondary">
+                Elemento não reconhecido: <code>{selectedElement.kind}</code>
+              </Text>
+            }
+          />
         </Card>
       )
   }

@@ -5,7 +5,7 @@ import { api } from './client'
 export interface UnitDto {
   id: string
   name: string
-  code?: string          // sigla
+  code?: string
   description?: string
   isActive: boolean
   createdAt: string
@@ -14,7 +14,7 @@ export interface UnitDto {
 export interface AreaDto {
   id: string
   name: string
-  code?: string          // sigla
+  code?: string
   description?: string
   unitId?: string
   unitName?: string
@@ -25,7 +25,7 @@ export interface AreaDto {
 export interface DisciplineDto {
   id: string
   name: string
-  code?: string          // sigla
+  code?: string
   description?: string
   areaId?: string
   areaName?: string
@@ -38,12 +38,25 @@ export interface DisciplineDto {
 export interface OrgRoleDto {
   id: string
   name: string
-  code?: string          // sigla
+  code?: string
   description?: string
   disciplineId?: string
   disciplineName?: string
   areaId?: string
   areaName?: string
+  isActive: boolean
+  createdAt: string
+}
+
+export interface OrgGroupDto {
+  id: string
+  name: string
+  code?: string
+  description?: string
+  /** IDs dos usuários membros do grupo */
+  memberIds: string[]
+  /** Nomes dos membros (preenchido pelo backend na leitura) */
+  memberNames?: string[]
   isActive: boolean
   createdAt: string
 }
@@ -97,17 +110,11 @@ export const getDisciplineById = async (id: string) =>
   (await api.get(`/organization/disciplines/${id}`)).data as DisciplineDto
 
 export const createDiscipline = async (data: {
-  name: string
-  code?: string
-  description?: string
-  areaId?: string
+  name: string; code?: string; description?: string; areaId?: string
 }) => (await api.post('/organization/disciplines', data)).data as DisciplineDto
 
 export const updateDiscipline = async (id: string, data: {
-  name: string
-  code?: string
-  description?: string
-  areaId?: string
+  name: string; code?: string; description?: string; areaId?: string
 }) => (await api.put(`/organization/disciplines/${id}`, data)).data as DisciplineDto
 
 export const deleteDiscipline = async (id: string) =>
@@ -125,19 +132,11 @@ export const getOrgRoleById = async (id: string) =>
   (await api.get(`/organization/roles/${id}`)).data as OrgRoleDto
 
 export const createOrgRole = async (data: {
-  name: string
-  code?: string
-  description?: string
-  areaId?: string
-  disciplineId?: string
+  name: string; code?: string; description?: string; areaId?: string; disciplineId?: string
 }) => (await api.post('/organization/roles', data)).data as OrgRoleDto
 
 export const updateOrgRole = async (id: string, data: {
-  name: string
-  code?: string
-  description?: string
-  areaId?: string
-  disciplineId?: string
+  name: string; code?: string; description?: string; areaId?: string; disciplineId?: string
 }) => (await api.put(`/organization/roles/${id}`, data)).data as OrgRoleDto
 
 export const deleteOrgRole = async (id: string) =>
@@ -145,23 +144,22 @@ export const deleteOrgRole = async (id: string) =>
 
 // ─── GROUPS ──────────────────────────────────────────────────────────────────
 
-export interface OrgGroupDto {
-  id: string
-  name: string
-  code?: string
-  description?: string
-  isActive: boolean
-  createdAt: string
-}
-
 export const getOrgGroups = async () =>
   (await api.get('/organization/groups')).data as OrgGroupDto[]
 
-export const createOrgGroup = async (data: { name: string; code?: string; description?: string }) =>
-  (await api.post('/organization/groups', data)).data as OrgGroupDto
+export const createOrgGroup = async (data: {
+  name: string
+  code?: string
+  description?: string
+  memberIds?: string[]
+}) => (await api.post('/organization/groups', data)).data as OrgGroupDto
 
-export const updateOrgGroup = async (id: string, data: { name: string; code?: string; description?: string }) =>
-  (await api.put(`/organization/groups/${id}`, data)).data as OrgGroupDto
+export const updateOrgGroup = async (id: string, data: {
+  name: string
+  code?: string
+  description?: string
+  memberIds?: string[]
+}) => (await api.put(`/organization/groups/${id}`, data)).data as OrgGroupDto
 
 export const deleteOrgGroup = async (id: string) =>
   api.delete(`/organization/groups/${id}`)

@@ -1,3 +1,5 @@
+// ─── StudioElementKind ────────────────────────────────────────────────────────
+
 export type StudioElementKind =
   | 'start'
   | 'activity'
@@ -5,10 +7,40 @@ export type StudioElementKind =
   | 'gateway'
   | 'flow'
   | 'end'
-  | 'notification'
+  | 'notification'   // legado — IntermediateThrowEvent/CatchEvent sem definição específica
+  | 'message'        // Message Intermediate Catch Event
+  | 'timer'          // Timer Intermediate Catch Event
+  | 'signal'         // Signal Intermediate Throw Event
+  | 'conditional'    // Conditional Intermediate Catch Event
   | 'unsupported'
 
-export function getStudioElementKind(type?: string): StudioElementKind {
+// ─── Mapa: eventDefinition.$type → StudioElementKind ─────────────────────────
+
+const EVENT_DEFINITION_KIND: Record<string, StudioElementKind> = {
+  'bpmn:MessageEventDefinition':     'message',
+  'bpmn:TimerEventDefinition':       'timer',
+  'bpmn:SignalEventDefinition':      'signal',
+  'bpmn:ConditionalEventDefinition': 'conditional',
+}
+
+// ─── getStudioElementKind ─────────────────────────────────────────────────────
+// Resolve o kind do elemento a partir do type BPMN e, opcionalmente,
+// do tipo da eventDefinition (para eventos intermediários).
+//
+// Uso:
+//   getStudioElementKind(element.type)
+//     → 'notification' (fallback para IntermediateCatchEvent sem eventDef)
+//
+//   getStudioElementKind(
+//     element.type,
+//     element.businessObject?.eventDefinitions?.[0]?.$type
+//   )
+//     → 'message' | 'timer' | 'signal' | 'conditional'
+
+export function getStudioElementKind(
+  type?: string,
+  eventDefinitionType?: string,
+): StudioElementKind {
   switch (type) {
     case 'bpmn:StartEvent':
       return 'start'
@@ -17,19 +49,29 @@ export function getStudioElementKind(type?: string): StudioElementKind {
     case 'bpmn:UserTask':
     case 'bpmn:ManualTask':
     case 'bpmn:BusinessRuleTask':
-    case 'bpmn:ScriptTask':
     case 'bpmn:ReceiveTask':
     case 'bpmn:CallActivity':
     case 'bpmn:SubProcess':
       return 'activity'
 
+    // ScriptTask → system-task (executado pelo motor, sem interação humana)
+    case 'bpmn:ScriptTask':
     case 'bpmn:ServiceTask':
       return 'system-task'
 
+    // SendTask → sempre notificação (envia mensagem)
     case 'bpmn:SendTask':
-    case 'bpmn:IntermediateThrowEvent':
-    case 'bpmn:IntermediateCatchEvent':
       return 'notification'
+
+    // Eventos intermediários — diferenciados pela eventDefinition
+    case 'bpmn:IntermediateCatchEvent':
+    case 'bpmn:IntermediateThrowEvent': {
+      if (eventDefinitionType && EVENT_DEFINITION_KIND[eventDefinitionType]) {
+        return EVENT_DEFINITION_KIND[eventDefinitionType]
+      }
+      // Sem eventDefinition específica → notificação (comportamento legado)
+      return 'notification'
+    }
 
     case 'bpmn:ExclusiveGateway':
     case 'bpmn:InclusiveGateway':
@@ -49,6 +91,28 @@ export function getStudioElementKind(type?: string): StudioElementKind {
   }
 }
 
-export function isConfigurableBpmnElement(type?: string) {
-  return getStudioElementKind(type) !== 'unsupported'
+// ─── isConfigurableBpmnElement ────────────────────────────────────────────────
+
+export function isConfigurableBpmnElement(
+  type?: string,
+  eventDefinitionType?: string,
+): boolean {
+  return getStudioElementKind(type, eventDefinitionType) !== 'unsupported'
+}
+
+// ─── Labels para UI ───────────────────────────────────────────────────────────
+
+export const STUDIO_KIND_LABELS: Record<StudioElementKind, string> = {
+  start:       'Evento de início',
+  activity:    'Atividade',
+  'system-task': 'Tarefa de sistema',
+  gateway:     'Gateway',
+  flow:        'Fluxo de sequência',
+  end:         'Evento de fim',
+  notification: 'Notificação',
+  message:     'Evento de Mensagem',
+  timer:       'Evento Temporal',
+  signal:      'Evento de Sinal',
+  conditional: 'Evento Condicional',
+  unsupported: 'Não suportado',
 }
