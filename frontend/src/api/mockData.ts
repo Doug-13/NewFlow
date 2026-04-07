@@ -249,6 +249,7 @@ export type MetadataDefinition = {
   isReadOnly?: boolean
   isActive: boolean
   orderIndex: number
+  multipleSelection?: boolean
   options: Array<{ value: string; label: string }>
   createdAt?: string
   updatedAt?: string
@@ -417,6 +418,31 @@ export type MockDatabase = {
   dashboards: DashboardSummary[]
   auditLogs: AuditLog[]
   environmentConfigurations: EnvironmentConfiguration[]
+  visualizacoes: VisualizacaoRecord[]
+  processoVisualizacoes: ProcessoVisualizacaoConfig[]
+}
+
+export type VisualizacaoRecord = {
+  id: string
+  nome: string
+  apenasResponsavel: boolean
+  exibirPendenciasAmbientes: boolean
+  exibirRevisoesAnteriores: boolean
+  mostrarPendenciasTreinamento: boolean
+  mostrarPendenciasDistribuicao: boolean
+  mostrarDocumentosCompartilhados: boolean
+  mostrarItensSeguidos: boolean
+  exibirAgrupamentosVazios: boolean
+  exibirProgressoDatabook: boolean
+  permiteRolagemHorizontal: boolean
+  processosVinculados: string[]
+  colunas: { metadataId: string; label: string; metadataSetName: string }[]
+}
+
+export type ProcessoVisualizacaoConfig = {
+  id: string
+  processId: string
+  visualizacaoIdsAtivas: string[]
 }
 
 // ─── Helpers de escopo ────────────────────────────────────────────────────────
@@ -752,4 +778,6 @@ export const INITIAL_MOCK_DB: MockDatabase = {
   dashboards:                structuredClone(MOCK_DASHBOARDS),
   auditLogs:                 [],
   environmentConfigurations: [],
+  visualizacoes:             [],
+  processoVisualizacoes:     [],
 }

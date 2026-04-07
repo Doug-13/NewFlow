@@ -10,7 +10,7 @@ import {
   UserOutlined, LogoutOutlined, FolderOpenOutlined, DatabaseOutlined,
   TeamOutlined, SettingOutlined, GlobalOutlined, UnorderedListOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, BellOutlined, AppstoreOutlined,
-  PlusOutlined, RightOutlined,
+  PlusOutlined, RightOutlined, EyeOutlined,
 } from '@ant-design/icons'
 
 import { useAuthStore } from './store/authStore'
@@ -31,6 +31,7 @@ import { TasksPage } from './pages/Tasks'
 import { UsersPage } from './pages/Users/UsersPage'
 import { OrganizationPage } from './pages/Admin/OrganizationPage'
 import { MetadataPage } from './pages/Admin/MetadataPage'
+import { ExibicaoPage } from './pages/Exibicao/ExibicaoPage'
 import { EnvironmentSettingsPage } from './pages/Admin/EnvironmentSettings'
 import { TenantsPage } from './pages/Platform/TenantsPage'
 import { PlatformAdminsPage } from './pages/Platform/PlatformAdminsPage'
@@ -156,6 +157,7 @@ function getTenantSelectedKey(pathname: string) {
   if (pathname.startsWith('/tasks'))                return '/tasks'
   if (pathname.startsWith('/users'))                return '/users'
   if (pathname.startsWith('/metadata'))             return '/metadata'
+  if (pathname.startsWith('/exibicao'))             return '/exibicao'
   if (pathname.startsWith('/organization'))         return '/organization'
   if (pathname.startsWith('/notifications'))        return '/notifications'
   if (pathname.startsWith('/environment-settings')) return '/environment-settings'
@@ -269,6 +271,7 @@ function AppLayout() {
         ...(has('metadata')
           ? [{ key: '/metadata', label: <Link to="/metadata">Metadados</Link>, icon: <DatabaseOutlined /> }]
           : []),
+        { key: '/exibicao', label: <Link to="/exibicao">Exibição</Link>, icon: <EyeOutlined /> },
         ...(user?.role === 'Admin'
           ? [{ key: '/environment-settings', label: <Link to="/environment-settings">Configurações</Link>, icon: <SettingOutlined /> }]
           : []),
@@ -359,6 +362,7 @@ function AppLayout() {
               <Route path="/tasks"                  element={<TasksPage />} />
               <Route path="/users"                  element={<UsersPage />} />
               <Route path="/metadata"               element={<MetadataPage />} />
+              <Route path="/exibicao"               element={<ExibicaoPage />} />
               <Route path="/organization"           element={<OrganizationPage />} />
               <Route path="/notifications"          element={<NotificationTemplatesPage />} />
               <Route path="/environment-settings"   element={<EnvironmentSettingsPage />} />

@@ -1335,6 +1335,8 @@ function resolveRoute(rawUrl: string): RouteResolution {
     [/^\/dashboard(?:\/(.+))?$/, 'dashboards'],
     [/^\/auditLogs(?:\/(.+))?$/, 'auditLogs'],
     [/^\/audit-logs(?:\/(.+))?$/, 'auditLogs'],
+    [/^\/visualizacoes(?:\/(.+))?$/, 'visualizacoes'],
+    [/^\/processoVisualizacoes(?:\/(.+))?$/, 'processoVisualizacoes'],
     [
       /^\/tenants\/[^/]+\/environment-configurations(?:\/(.+))?$/,
       'environmentConfigurations',

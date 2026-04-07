@@ -63,7 +63,18 @@ const FIELD_TYPES = [
   { label: 'Tabela', value: 'table' },
   { label: 'Sim / Não', value: 'boolean' },
   { label: 'Usuário', value: 'user' },
+  { label: 'Unidades', value: 'org_units' },
+  { label: 'Áreas/Departamentos', value: 'org_areas' },
+  { label: 'Disciplinas', value: 'org_disciplines' },
+  { label: 'Funções', value: 'org_roles' },
+  { label: 'Grupos', value: 'org_groups' },
 ]
+
+const ORG_FIELD_TYPES = ['org_units', 'org_areas', 'org_disciplines', 'org_roles', 'org_groups']
+
+function isOrgField(fieldType?: string) {
+  return !!fieldType && ORG_FIELD_TYPES.includes(fieldType)
+}
 
 const STRING_MASKS = [
   { label: 'Sem máscara', value: 'none' },
@@ -151,6 +162,7 @@ export function MetadataPage() {
   const [openMetadataModal, setOpenMetadataModal] = useState(false)
   const [editingMetadata, setEditingMetadata] = useState<MetadataDefinitionDto | null>(null)
   const [fieldType, setFieldType] = useState('text')
+  const [multipleSelection, setMultipleSelection] = useState(false)
   const [optionsText, setOptionsText] = useState('')
   const [selectedSetId, setSelectedSetId] = useState<string | undefined>(undefined)
 
@@ -457,6 +469,7 @@ export function MetadataPage() {
 
     setEditingMetadata(current)
     setFieldType(current?.fieldType ?? 'text')
+    setMultipleSelection((current as any)?.multipleSelection ?? false)
     setOptionsText(formatOptionsText(current?.options ?? [], current?.fieldType))
     setTableColumns(
       (current?.tableColumns ?? []).map((column, index) => ({
@@ -486,6 +499,7 @@ export function MetadataPage() {
     setOpenMetadataModal(false)
     setEditingMetadata(null)
     setFieldType('text')
+    setMultipleSelection(false)
     setOptionsText('')
     setSelectedTableMetadataId(undefined)
     setTableColumns([])
@@ -543,6 +557,7 @@ export function MetadataPage() {
       maskType: values.fieldType === 'text' ? values.maskType ?? 'none' : null,
       options: isListField(values.fieldType) ? parsedOptions : [],
       tableColumns: values.fieldType === 'table' ? tableColumns : [],
+      ...(isOrgField(values.fieldType) ? { multipleSelection } : { multipleSelection: false }),
     }
 
     if (editingMetadata) {
@@ -1001,10 +1016,30 @@ export function MetadataPage() {
                     if (!LIST_FIELD_TYPES.includes(value)) {
                       setOptionsText('')
                     }
+
+                    if (!ORG_FIELD_TYPES.includes(value)) {
+                      setMultipleSelection(false)
+                    }
                   }}
                 />
               </Form.Item>
             </Space>
+
+            {isOrgField(fieldType) && (
+              <Form.Item label="Seleção">
+                <Switch
+                  checked={multipleSelection}
+                  onChange={setMultipleSelection}
+                  checkedChildren="Múltipla"
+                  unCheckedChildren="Única"
+                />
+                <Text type="secondary" style={{ marginLeft: 12 }}>
+                  {multipleSelection
+                    ? 'O usuário poderá selecionar vários itens.'
+                    : 'O usuário poderá selecionar apenas um item.'}
+                </Text>
+              </Form.Item>
+            )}
 
             {fieldType === 'text' && (
               <Form.Item

@@ -35,5 +35,8 @@
   "/api/v1/organization/roles":                             "/organizationRoles",
   "/api/v1/organization/roles/:id":                         "/organizationRoles/:id",
 
-  "/api/v1/dashboard/summary":                              "/dashboard/0"
+  "/api/v1/dashboard/summary":                              "/dashboard/0",
+
+  "/api/v1/visualizacoes":                                  "/visualizacoes",
+  "/api/v1/visualizacoes/:id":                              "/visualizacoes/:id"
 }

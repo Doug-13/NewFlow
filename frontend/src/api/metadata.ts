@@ -26,6 +26,7 @@ export interface MetadataDefinitionDto {
   orderIndex: number
   metadataSetId: string
   metadataSetName: string
+  multipleSelection?: boolean
   options?: MetadataOptionDto[]
   tableColumns?: MetadataTableColumnDto[]
 }

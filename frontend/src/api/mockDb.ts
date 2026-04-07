@@ -48,6 +48,8 @@ function ensureAllCollections(db: Partial<MockDatabase> | null | undefined): Moc
     dashboards:              clone(db?.dashboards              ?? INITIAL_MOCK_DB.dashboards),
     auditLogs:               clone(db?.auditLogs               ?? INITIAL_MOCK_DB.auditLogs),
     environmentConfigurations: clone(db?.environmentConfigurations ?? INITIAL_MOCK_DB.environmentConfigurations),
+    visualizacoes:             clone(db?.visualizacoes             ?? INITIAL_MOCK_DB.visualizacoes),
+    processoVisualizacoes:     clone(db?.processoVisualizacoes     ?? INITIAL_MOCK_DB.processoVisualizacoes),
   }
 }
 

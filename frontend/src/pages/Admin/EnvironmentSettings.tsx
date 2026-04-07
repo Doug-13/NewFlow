@@ -15,6 +15,10 @@ import { useAuthStore } from '../../store/authStore'
 import type { EnvironmentSettings, CodingRulePart } from '../../types/environmentSettings'
 import { WorkflowsPage } from '../Workflows/WorkflowsPage'
 import { NotificationTemplatesPage } from '../Notifications/NotificationTemplatesPage'
+import { getVisualizacoes } from '../../api/visualizacoes'
+import { getConfigByProcesso, saveConfigProcesso } from '../../api/processoVisualizacoes'
+import type { Visualizacao } from '../Exibicao/ExibicaoPage'
+import type { ProcessoVisualizacaoConfig } from '../../api/mockData'
 import { mockApi } from '../../api/mockApi'
 import type { Process } from '../../api/mockData'
 import { getUsers } from '../../api/users'
@@ -367,6 +371,96 @@ function ProcessTab({ accountId, processId }: { accountId: string; processId?: s
 
 // ─── EnvironmentSettingsPage ──────────────────────────────────────────────────
 
+function ExibicaoTab({ processId }: { processId?: string }) {
+  const qc = useQueryClient()
+  const [selecionadas, setSelecionadas] = useState<string[]>([])
+
+  const { data: visualizacoes = [], isLoading: loadingViz } = useQuery<Visualizacao[]>({
+    queryKey: ['visualizacoes'],
+    queryFn: getVisualizacoes,
+  })
+
+  const { data: config, isLoading: loadingConfig } = useQuery<ProcessoVisualizacaoConfig | null>({
+    queryKey: ['processo-visualizacoes', processId],
+    queryFn: () => getConfigByProcesso(processId!),
+    enabled: !!processId,
+  })
+
+  useEffect(() => {
+    setSelecionadas(config?.visualizacaoIdsAtivas ?? [])
+  }, [config])
+
+  const saveMutation = useMutation({
+    mutationFn: () => saveConfigProcesso(processId!, selecionadas),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['processo-visualizacoes', processId] })
+      message.success('Configuração de exibição salva.')
+    },
+  })
+
+  const vinculadas = visualizacoes.filter(
+    (v) => processId && (v.processosVinculados ?? []).includes(processId),
+  )
+
+  const isLoading = loadingViz || loadingConfig
+
+  if (isLoading) return <Spin />
+
+  if (vinculadas.length === 0) {
+    return (
+      <div style={{ padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <EyeOutlined style={{ fontSize: 40, color: '#bfbfbf' }} />
+        <Typography.Text type="secondary">Nenhuma visualização vinculada a este processo.</Typography.Text>
+      </div>
+    )
+  }
+
+  const toggleSelecionada = (id: string, checked: boolean) => {
+    setSelecionadas((prev) =>
+      checked ? [...prev, id] : prev.filter((x) => x !== id),
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Typography.Text type="secondary">
+        Selecione as visualizações que deseja ativar para este processo.
+      </Typography.Text>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {vinculadas.map((v) => (
+          <Card
+            key={v.id}
+            size="small"
+            style={{ borderRadius: 8, cursor: 'pointer' }}
+            onClick={() => toggleSelecionada(v.id, !selecionadas.includes(v.id))}
+          >
+            <Space>
+              <input
+                type="checkbox"
+                checked={selecionadas.includes(v.id)}
+                onChange={(e) => toggleSelecionada(v.id, e.target.checked)}
+                onClick={(e) => e.stopPropagation()}
+                style={{ width: 16, height: 16, cursor: 'pointer' }}
+              />
+              <Typography.Text strong>{v.nome}</Typography.Text>
+            </Space>
+          </Card>
+        ))}
+      </div>
+      <div>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          loading={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
+        >
+          Salvar
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 type EnvironmentSettingsPageProps = {
   processId?: string
 }
@@ -590,6 +684,13 @@ export function EnvironmentSettingsPage({ processId }: EnvironmentSettingsPagePr
           key: 'notifications',
           label: <Space size={6}><BellOutlined /><span>Notificações</span></Space>,
           children: <NotificationTemplatesPage />,
+        },
+
+        // 5. Exibição
+        {
+          key: 'exibicao',
+          label: <Space size={6}><EyeOutlined /><span>Exibição</span></Space>,
+          children: <ExibicaoTab processId={processId} />,
         },
       ]} />
     </Space>
