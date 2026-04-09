@@ -1,6 +1,7 @@
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { getMockDb, saveMockDb } from './mockDb'
 import { getElementConfigsByWorkflow } from '../../src/features/workflows/storage'
+import { loadStoredWorkflows } from '../../src/api/workflowStorage'
 
 function clone<T>(value: T): T { return structuredClone(value) }
 
@@ -99,8 +100,6 @@ function generateDocumentCode(db: MockDb, accountId: string): string {
 }
 
 // ─── Geração de revisão ──────────────────────────────────────────────────────
-// Gera o próximo valor de revisão com base na configuração do processo
-// Suporta: numérico (00, 01...), alfabético (A, B...), alfanumérico (A0, A1...)
 
 function getRevisionConfig(db: MockDb): { pattern: string; initialValue: string } {
   const cfg = db.environmentConfigurations.find((c) => c.isDefault !== false) ?? db.environmentConfigurations[0] ?? null
@@ -129,7 +128,6 @@ function generateNextRevision(
     const upper = currentRevision.toUpperCase()
     if (upper === 'Z') return 'AA'
     if (upper.length === 1) return String.fromCharCode(upper.charCodeAt(0) + 1)
-    // AA → AB, AZ → BA etc.
     const chars = upper.split('')
     let i = chars.length - 1
     while (i >= 0) {
@@ -142,14 +140,12 @@ function generateNextRevision(
   }
 
   if (pattern === 'alphanumeric') {
-    // Ex: A0 → A1, A9 → B0
     const match = currentRevision.match(/^([A-Z]+)(\d+)$/)
     if (!match) return initialValue
     const letter = match[1]
     const num = parseInt(match[2], 10) + 1
     const digits = match[2].length
     if (num < Math.pow(10, digits)) return letter + String(num).padStart(digits, '0')
-    // Overflow: próxima letra
     const nextLetter = generateNextRevision(db, processId, letter)
     return nextLetter + '0'.repeat(digits)
   }
@@ -246,10 +242,16 @@ function resolveStepResponsible(
   return creator ? { id: creator.id, name: creator.name } : { id: creatorId ?? 'unknown', name: 'Responsável' }
 }
 
-// ─── Executar system-task automaticamente ───────────────────────────────────
-// Se a próxima etapa for uma system-task (kind: 'system-task' no elementConfig),
-// executa a ação automaticamente e avança o fluxo sem criar tarefa para o usuário.
-// Retorna true se executou (e já avançou), false se não era system-task.
+// ─── isOperationalStep ───────────────────────────────────────────────────────
+// CORREÇÃO: StartEvent, EndEvent, Gateway e Flow são estruturais — não geram
+// tarefas e não aparecem na aba Workflow do documento.
+
+function isOperationalStep(step: Record<string, unknown>): boolean {
+  const kind = String(step.kind ?? '')
+  return !['start', 'end', 'gateway', 'flow'].includes(kind)
+}
+
+// ─── Executar system-task automaticamente ────────────────────────────────────
 
 function executeSystemTaskIfNeeded(
   db: MockDb,
@@ -271,7 +273,6 @@ function executeSystemTaskIfNeeded(
     if (cfg) systemTaskConfig = (cfg.config as Record<string, unknown>) ?? {}
   } catch { /* não é system-task configurada */ }
 
-  // Também detecta pelo campo kind do próprio step (para steps do mock)
   const stepKind = String(step.kind ?? '')
   if (!systemTaskConfig && stepKind !== 'system-task') return false
 
@@ -280,7 +281,6 @@ function executeSystemTaskIfNeeded(
   const now        = new Date().toISOString()
   const stepLabel  = String(step.name ?? '')
 
-  // ── Executa a ação da system-task ─────────────────────────────────────────
   if (actionType === 'increment-revision') {
     const currentRev = String((doc as any).revision ?? '') || null
     const nextRev    = generateNextRevision(db, String(doc.processId ?? ''), currentRev)
@@ -293,7 +293,7 @@ function executeSystemTaskIfNeeded(
     )
 
     const enrichedSteps = enrichStepsWithElementConfigs(workflowId, steps)
-    const firstStep     = enrichedSteps[0] ?? steps[0]
+    const firstStep     = enrichedSteps.find(isOperationalStep) ?? enrichedSteps[0]
 
     const newRevDoc = {
       id:                    newDocId,
@@ -352,7 +352,6 @@ function executeSystemTaskIfNeeded(
       comment: `Tarefa de sistema executada: incrementar revisão → ${newRevCode} Rev ${nextRev}`,
     })
   } else {
-    // Outras system-tasks: apenas registra auditoria
     addAuditLog(db, String(doc.id), 'SystemTaskExecuted', {
       stepName: stepLabel,
       userName: executorName,
@@ -360,8 +359,6 @@ function executeSystemTaskIfNeeded(
     })
   }
 
-  // ── Avança o documento para a próxima etapa após a system-task ─────────────
-  // Busca a transição padrão (primeira) ou próxima sequencial
   const transitions = (step.transitions as Array<Record<string, unknown>>) ?? []
   const nextTransition = transitions[0]
   const nextStep = nextTransition
@@ -382,7 +379,6 @@ function executeSystemTaskIfNeeded(
         currentStepOrderIndex: nextStep.orderIndex as number,
         updatedAt:             now,
       }
-      // Verifica recursivamente se a próxima etapa também é automática
       const isNextAutomatic =
         executeIntermediateEventIfNeeded(db, docIndex, nextStep, steps, workflow, executorName) ||
         executeSystemTaskIfNeeded(db, docIndex, nextStep, steps, workflow, executorName)
@@ -435,7 +431,6 @@ function advanceAfterAutoEvent(
       currentStepOrderIndex: nextStep.orderIndex as number,
       updatedAt:             now,
     }
-    // Verifica recursivamente se a próxima etapa também é automática
     const isAutoNext =
       executeIntermediateEventIfNeeded(db, docIndex, nextStep, steps, workflow, executorName) ||
       executeSystemTaskIfNeeded(db, docIndex, nextStep, steps, workflow, executorName)
@@ -454,7 +449,6 @@ function advanceAfterAutoEvent(
 }
 
 // ─── Executar evento intermediário automático ─────────────────────────────────
-// Detecta e executa message / timer / signal / conditional events automaticamente.
 
 function executeIntermediateEventIfNeeded(
   db: MockDb,
@@ -479,13 +473,11 @@ function executeIntermediateEventIfNeeded(
     }
   } catch { return false }
 
-  // Só trata os eventos intermediários (message, timer, signal, conditional)
   if (!['message', 'timer', 'signal', 'conditional'].includes(eventKind)) return false
 
   const doc       = db.documentInstances[docIndex]
   const stepLabel = String(step.name ?? '')
 
-  // ── MESSAGE: dispara notificações ─────────────────────────────────────────
   if (eventKind === 'message') {
     const templateIds = (eventConfig?.notificationTemplateIds as string[]) ?? []
     addAuditLog(db, String(doc.id), 'NotificationDispatched', {
@@ -496,7 +488,6 @@ function executeIntermediateEventIfNeeded(
     return advanceAfterAutoEvent(db, docIndex, step, steps, workflow, executorName, stepLabel)
   }
 
-  // ── TIMER: avança automaticamente (mock não aguarda tempo real) ───────────
   if (eventKind === 'timer') {
     const timerType  = String(eventConfig?.timerType  ?? 'fixed-delay')
     const delayValue = eventConfig?.delayValue ? `${eventConfig.delayValue} ${eventConfig.delayUnit ?? ''}` : ''
@@ -508,7 +499,6 @@ function executeIntermediateEventIfNeeded(
     return advanceAfterAutoEvent(db, docIndex, step, steps, workflow, executorName, stepLabel)
   }
 
-  // ── SIGNAL: dispara ação em documento relacionado ─────────────────────────
   if (eventKind === 'signal') {
     const targetProcessId = String(eventConfig?.targetProcessId ?? '')
     const targetAction    = String(eventConfig?.targetAction    ?? '')
@@ -554,11 +544,9 @@ function executeIntermediateEventIfNeeded(
     return advanceAfterAutoEvent(db, docIndex, step, steps, workflow, executorName, stepLabel)
   }
 
-  // ── CONDITIONAL: incrementar revisão ──────────────────────────────────────
   if (eventKind === 'conditional') {
     const actionType = String(eventConfig?.actionType ?? '')
     if (actionType === 'increment-revision') {
-      // Delega para executeSystemTaskIfNeeded que já tem a lógica completa
       return executeSystemTaskIfNeeded(db, docIndex, step, steps, workflow, executorName)
     }
     return advanceAfterAutoEvent(db, docIndex, step, steps, workflow, executorName, stepLabel)
@@ -620,7 +608,6 @@ function createTaskForStep(
 }
 
 // ─── Persistir metadados iniciais ────────────────────────────────────────────
-// CORREÇÃO: salva os valores preenchidos na criação do documento
 
 function persistInitialMetadataValues(
   db: MockDb,
@@ -632,23 +619,18 @@ function persistInitialMetadataValues(
 ) {
   if (!initialMetadataValues || Object.keys(initialMetadataValues).length === 0) return
 
-  // Coleta todos os metadataFields de todos os steps para resolver label/fieldType
   const allFields = steps.flatMap((s) =>
     Array.isArray(s.metadataFields)
       ? (s.metadataFields as Array<Record<string, unknown>>)
       : [],
   )
 
-  // Também tenta resolver pelo db.metadataDefinitions como fallback
   Object.entries(initialMetadataValues).forEach(([metadataDefinitionId, value]) => {
     if (value === null || value === undefined) return
 
-    // Tenta achar a definição nos campos dos steps
     const fieldDef = allFields.find(
       (f) => String(f.metadataDefinitionId ?? '') === metadataDefinitionId,
     )
-
-    // Fallback: busca no db.metadataDefinitions
     const dbDef = db.metadataDefinitions.find((d) => d.id === metadataDefinitionId)
 
     const name      = String(fieldDef?.name  ?? dbDef?.name  ?? dbDef?.label ?? metadataDefinitionId)
@@ -684,8 +666,6 @@ function persistInitialMetadataValues(
 }
 
 // ─── Enriquecer steps com configs do localStorage ────────────────────────────
-// As instruções/helpText/responsáveis são salvas no localStorage via Workflow Studio
-// mas os steps do db.workflows não têm esses campos — precisamos mesclar aqui
 
 function enrichStepsWithElementConfigs(
   workflowId: string,
@@ -709,11 +689,14 @@ function enrichStepsWithElementConfigs(
 
     const config = (cfg.config ?? {}) as Record<string, unknown>
 
+    // Deriva o kind do elementConfig se o step não tiver kind ainda
+    const resolvedKind = String(step.kind ?? cfg.kind ?? '')
+
     return {
       ...step,
+      kind:         resolvedKind || step.kind,
       instructions: config.instructions ?? step.instructions ?? null,
       helpText:     config.helpText     ?? step.helpText     ?? null,
-      // Também garante que actions/responsibles do config prevalecem sobre os do step
       actions:      Array.isArray(config.actions)      && (config.actions as unknown[]).length      ? config.actions      : step.actions,
       responsibles: Array.isArray(config.responsibles) && (config.responsibles as unknown[]).length ? config.responsibles : step.responsibles,
       deadlineMode:  config.deadlineMode  ?? step.deadlineMode,
@@ -727,10 +710,19 @@ function enrichStepsWithElementConfigs(
 function enrichDocument(db: MockDb, doc: Record<string, unknown>): Record<string, unknown> {
   const workflow    = db.workflows.find((w) => w.id === doc.workflowId) as Record<string, unknown> | undefined
   const docSteps    = Array.isArray(doc._steps) ? (doc._steps as Array<Record<string, unknown>>) : []
-  const rawSteps    = ((workflow?.steps as Array<Record<string, unknown>>) ?? []).length > 0
-    ? (workflow?.steps as Array<Record<string, unknown>>)
-    : docSteps
-  // Enriquece com instruções/helpText/actions salvos no localStorage pelo Workflow Studio
+
+  // Fallback: busca steps no workflowStorage (Studio) se mock-db não tiver
+  let rawSteps: Array<Record<string, unknown>> = []
+  if ((workflow?.steps as any[])?.length > 0) {
+    rawSteps = workflow!.steps as Array<Record<string, unknown>>
+  } else if (docSteps.length > 0) {
+    rawSteps = docSteps
+  } else {
+    const storedWf = loadStoredWorkflows().find((w) => w.id === String(doc.workflowId ?? ''))
+    if (storedWf?.steps?.length) {
+      rawSteps = storedWf.steps as Array<Record<string, unknown>>
+    }
+  }
   const steps       = enrichStepsWithElementConfigs(String(doc.workflowId ?? ''), rawSteps)
   const currentStep = steps.find((s) => s.orderIndex === doc.currentStepOrderIndex)
   const docTasks    = db.tasks.filter((t) => t.documentInstanceId === String(doc.id ?? ''))
@@ -771,31 +763,32 @@ function enrichDocument(db: MockDb, doc: Record<string, unknown>): Record<string
       id: l.id, action: l.action, stepName: l.stepName,
       userName: l.userName, comment: l.comment, createdAt: l.createdAt,
     })),
-    workflowSteps: steps.map((s) => ({
-      id:             s.id,
-      name:           s.name,
-      orderIndex:     s.orderIndex,
-      isInitial:      s.isInitial,
-      isFinal:        s.isFinal,
-      allowedActions: s.allowedActions,
-      actions:        s.actions,
-      deadlineMode:   s.deadlineMode,
-      deadlineValue:  s.deadlineValue,
-      responsibles:   s.responsibles,
-      transitions:    s.transitions,
-      instructions:   s.instructions,
-      helpText:       s.helpText,
-    })),
+    // CORREÇÃO: filtra Start/End/Gateway/Flow — apenas etapas operacionais
+    workflowSteps: steps
+      .filter(isOperationalStep)
+      .map((s) => ({
+        id:             s.id,
+        name:           s.name,
+        orderIndex:     s.orderIndex,
+        isInitial:      s.isInitial,
+        isFinal:        s.isFinal,
+        allowedActions: s.allowedActions,
+        actions:        s.actions,
+        deadlineMode:   s.deadlineMode,
+        deadlineValue:  s.deadlineValue,
+        responsibles:   s.responsibles,
+        transitions:    s.transitions,
+        instructions:   s.instructions,
+        helpText:       s.helpText,
+      })),
   }
 }
 
 // ─── GET metadados: merged com valores salvos ────────────────────────────────
-// CORREÇÃO: retorna value correto para campos da etapa atual
 
 function getMetadataValuesForDocument(db: MockDb, documentId: string): Array<Record<string, unknown>> {
   const doc = db.documentInstances.find((d) => d.id === documentId)
 
-  // Todos os valores persistidos para este documento
   const savedValues = clone(db.metadataValues).filter(
     (v: Record<string, unknown>) => String(v.documentInstanceId) === documentId,
   ) as Array<Record<string, unknown>>
@@ -804,20 +797,25 @@ function getMetadataValuesForDocument(db: MockDb, documentId: string): Array<Rec
 
   const docSteps   = Array.isArray(doc._steps) ? (doc._steps as Array<Record<string, unknown>>) : []
   const wf         = db.workflows.find((w) => w.id === doc.workflowId) as Record<string, unknown> | undefined
-  const rawStepsM  = ((wf?.steps as Array<Record<string, unknown>>) ?? []).length > 0
-    ? (wf?.steps as Array<Record<string, unknown>>)
-    : docSteps
+
+  let rawStepsM: Array<Record<string, unknown>> = []
+  if ((wf?.steps as any[])?.length > 0) {
+    rawStepsM = wf!.steps as Array<Record<string, unknown>>
+  } else if (docSteps.length > 0) {
+    rawStepsM = docSteps
+  } else {
+    const storedWf = loadStoredWorkflows().find((w) => w.id === String(doc.workflowId ?? ''))
+    if (storedWf?.steps?.length) rawStepsM = storedWf.steps as Array<Record<string, unknown>>
+  }
   const steps      = enrichStepsWithElementConfigs(String(doc.workflowId ?? ''), rawStepsM)
   const currStep   = steps.find((s) => s.orderIndex === doc.currentStepOrderIndex)
   const stepFields = Array.isArray(currStep?.metadataFields)
     ? (currStep!.metadataFields as Array<Record<string, unknown>>)
     : []
 
-  // Mapa de valores salvos por metadataDefinitionId para lookup O(1)
   const savedMap = new Map<string, Record<string, unknown>>()
   savedValues.forEach((sv) => savedMap.set(String(sv.metadataDefinitionId ?? ''), sv))
 
-  // 1. Campos da etapa atual — com valor salvo injetado
   const merged: Array<Record<string, unknown>> = stepFields.map((field) => {
     const defId = String(field.metadataDefinitionId ?? '')
     const saved = savedMap.get(defId)
@@ -832,18 +830,15 @@ function getMetadataValuesForDocument(db: MockDb, documentId: string): Array<Rec
       isReadOnly:  Boolean(field.isReadOnly),
       options:     Array.isArray(field.options)      ? field.options      : [],
       tableColumns: Array.isArray(field.tableColumns) ? field.tableColumns : [],
-      // CORREÇÃO: usa valor salvo se existir, senão null
       value: saved !== undefined ? (saved.value ?? null) : null,
     }
   })
 
-  // 2. Valores salvos de etapas ANTERIORES (não presentes na etapa atual)
-  //    Exibidos como read-only — são histórico de etapas já concluídas
   const mergedIds = new Set(stepFields.map((f) => String(f.metadataDefinitionId ?? '')))
 
   savedValues.forEach((sv) => {
     const defId = String(sv.metadataDefinitionId ?? '')
-    if (mergedIds.has(defId)) return // já incluído acima
+    if (mergedIds.has(defId)) return
 
     merged.push({
       metadataDefinitionId: defId,
@@ -852,7 +847,7 @@ function getMetadataValuesForDocument(db: MockDb, documentId: string): Array<Rec
       fieldType:  String(sv.fieldType ?? 'text'),
       maskType:   sv.maskType ?? null,
       isRequired: Boolean(sv.isRequired),
-      isReadOnly: true, // campos de etapas passadas são sempre read-only
+      isReadOnly: true,
       options:    Array.isArray(sv.options)      ? sv.options      : [],
       tableColumns: Array.isArray(sv.tableColumns) ? sv.tableColumns : [],
       value:      sv.value ?? null,
@@ -979,8 +974,6 @@ export function installMockAdapter(instance: AxiosInstance) {
 
     // ── GET ──────────────────────────────────────────────────────────────────
     if (method === 'get') {
-
-      // GET /metadata/values/:documentId
       if (collection === 'metadataValues' && action === 'byDocument' && id) {
         throw { isMockResponse: true, response: makeResponse(getMetadataValuesForDocument(db, id)) }
       }
@@ -1040,9 +1033,17 @@ export function installMockAdapter(instance: AxiosInstance) {
           const doc      = db.documentInstances[docIndex]
           const workflow = db.workflows.find((w) => w.id === doc.workflowId) as Record<string, unknown> | undefined
           const docSteps = Array.isArray(doc._steps) ? (doc._steps as Array<Record<string, unknown>>) : []
-          const steps    = ((workflow?.steps as Array<Record<string, unknown>>) ?? []).length > 0
-            ? (workflow?.steps as Array<Record<string, unknown>>)
-            : docSteps
+
+          // Fallback: busca steps no workflowStorage quando mock-db não tem
+          let steps: Array<Record<string, unknown>> = []
+          if ((workflow?.steps as any[])?.length > 0) {
+            steps = workflow!.steps as Array<Record<string, unknown>>
+          } else if (docSteps.length > 0) {
+            steps = docSteps
+          } else {
+            const storedWf = loadStoredWorkflows().find((w) => w.id === String(doc.workflowId ?? ''))
+            if (storedWf?.steps?.length) steps = storedWf.steps as Array<Record<string, unknown>>
+          }
           const currStep = steps.find((s) => s.orderIndex === doc.currentStepOrderIndex)
           const transition = (currStep?.transitions as Array<Record<string, unknown>> | undefined)
             ?.find((t) => t.triggerAction === actionName)
@@ -1056,7 +1057,6 @@ export function installMockAdapter(instance: AxiosInstance) {
             processName: String(doc.processName ?? ''), steps,
           }
 
-          // pendingNextStep: etapa seguinte resolvida — será processada após update do doc
           let pendingNextStep: Record<string, unknown> | null = null
 
           if (actionName === 'reject') {
@@ -1095,20 +1095,16 @@ export function installMockAdapter(instance: AxiosInstance) {
           const executorUser = db.users.find((u) => u.id === String((doc as any).responsibleId ?? ''))
           const executorName = executorUser?.name ?? String((doc as any).createdByName ?? '')
           const stepLabel    = currStep ? String(currStep.name ?? '') : ''
+
           if (nextStatus === 'rejected')   addAuditLog(db, String(doc.id), 'DocumentoRejected',   { stepName: stepLabel, userName: executorName, comment })
           else if (nextStatus === 'cancelled') addAuditLog(db, String(doc.id), 'DocumentoCancelled', { stepName: stepLabel, userName: executorName, comment })
           else if (nextStatus === 'published') addAuditLog(db, String(doc.id), 'DocumentoPublished', { stepName: stepLabel, userName: executorName, comment })
           else addAuditLog(db, String(doc.id), 'TaskExecuted', { stepName: stepLabel, userName: executorName, comment })
 
-          // ── Processa a próxima etapa: evento automático ou tarefa humana ─────
           if (pendingNextStep && nextStatus === 'in_progress') {
             const wasAutoEvent =
-              executeIntermediateEventIfNeeded(
-                db, docIndex, pendingNextStep, steps, wfForTask as Record<string, unknown>, executorName
-              ) ||
-              executeSystemTaskIfNeeded(
-                db, docIndex, pendingNextStep, steps, wfForTask as Record<string, unknown>, executorName
-              )
+              executeIntermediateEventIfNeeded(db, docIndex, pendingNextStep, steps, wfForTask as Record<string, unknown>, executorName) ||
+              executeSystemTaskIfNeeded(db, docIndex, pendingNextStep, steps, wfForTask as Record<string, unknown>, executorName)
             if (!wasAutoEvent) {
               createTaskForStep(
                 db,
@@ -1119,8 +1115,6 @@ export function installMockAdapter(instance: AxiosInstance) {
               )
             }
           }
-
-          // ── system-task: executada automaticamente via executeSystemTaskIfNeeded ──
         }
 
         saveMockDb(db)
@@ -1191,14 +1185,34 @@ export function installMockAdapter(instance: AxiosInstance) {
         const body      = parseBody(config.data)
         const now       = new Date().toISOString()
         const accountId = String(body.accountId ?? '')
+        const workflowId = String(body.workflowId ?? '')
 
-        const workflow  = db.workflows.find((w) => w.id === String(body.workflowId ?? '')) as Record<string, unknown> | undefined
-        const bodySteps = Array.isArray(body.steps) ? (body.steps as Array<Record<string, unknown>>) : []
-        const steps     = ((workflow?.steps as Array<Record<string, unknown>>) ?? []).length > 0
-          ? (workflow?.steps as Array<Record<string, unknown>>)
-          : bodySteps
-        const initStep  = steps.find((s) => s.isInitial === true) ?? steps[0]
-        const docCode   = generateDocumentCode(db, accountId)
+        // Busca o workflow no mock-db primeiro, senão no localStorage (Studio)
+        const workflow = db.workflows.find((w) => w.id === workflowId) as Record<string, unknown> | undefined
+
+        // Steps: prioridade — mock-db workflow → workflowStorage (Studio) → body.steps
+        let steps: Array<Record<string, unknown>> = []
+
+        if ((workflow?.steps as any[])?.length > 0) {
+          steps = workflow!.steps as Array<Record<string, unknown>>
+        } else {
+          // Busca no workflowStorage (workflows criados no Studio com BPMN)
+          const storedWorkflow = loadStoredWorkflows().find((w) => w.id === workflowId)
+          if (storedWorkflow?.steps && storedWorkflow.steps.length > 0) {
+            steps = storedWorkflow.steps as Array<Record<string, unknown>>
+          } else if (Array.isArray(body.steps) && (body.steps as any[]).length > 0) {
+            steps = body.steps as Array<Record<string, unknown>>
+          }
+        }
+
+        // CORREÇÃO: pula StartEvent (kind:'start') e usa a primeira etapa operacional
+        const _markedInitial = steps.find((s) => s.isInitial === true) ?? steps[0]
+        const _startIndex    = steps.indexOf(_markedInitial)
+        const initStep       = _markedInitial && isOperationalStep(_markedInitial)
+          ? _markedInitial
+          : steps.slice(_startIndex + 1).find(isOperationalStep) ?? _markedInitial
+
+        const docCode = generateDocumentCode(db, accountId)
 
         const newDoc = {
           id:                    generateId('doc'),
@@ -1210,7 +1224,7 @@ export function installMockAdapter(instance: AxiosInstance) {
           revision:              getRevisionConfig(db).initialValue,
           parentDocumentId:      null,
           status:                'in_progress',
-          workflowId:            String(body.workflowId  ?? ''),
+          workflowId:            workflowId,
           workflowName:          String(body.workflowName ?? workflow?.name ?? ''),
           currentStepName:       initStep ? String(initStep.name ?? '') : null,
           currentStepOrderIndex: initStep ? (initStep.orderIndex as number) : null,
@@ -1226,7 +1240,6 @@ export function installMockAdapter(instance: AxiosInstance) {
 
         db.documentInstances.push(newDoc)
 
-        // ── CORREÇÃO: persiste os metadados iniciais preenchidos na criação ──
         const initialMetadataValues = (body.initialMetadataValues ?? {}) as Record<string, unknown>
         if (Object.keys(initialMetadataValues).length > 0) {
           persistInitialMetadataValues(
@@ -1243,11 +1256,10 @@ export function installMockAdapter(instance: AxiosInstance) {
             userName: String(body.createdByName ?? ''),
           })
         }
-        // ────────────────────────────────────────────────────────────────────
 
         if (initStep) {
           const wfForTask = workflow ?? {
-            id: String(body.workflowId ?? ''), name: String(body.workflowName ?? ''),
+            id: workflowId, name: String(body.workflowName ?? ''),
             processId: String(body.processId ?? ''), processName: String(body.processName ?? ''), steps,
           }
           createTaskForStep(db, newDoc as Record<string, unknown>, wfForTask as Record<string, unknown>, initStep, newDoc.createdById)

@@ -1,13 +1,19 @@
 /**
  * workflowStorage.ts
- * Utilitário compartilhado para leitura dos workflows armazenados no localStorage.
- * Os workflows são gerenciados pelo WorkflowsPage e pelo studio (features/workflows).
- * Reconstrói `steps` a partir do BPMN XML + element configs para uso pelo sistema de documentos.
+ *
+ * Reconstrói `steps` com transições corretas a partir do BPMN XML.
+ *
+ * ESTRATÉGIA DE TRANSIÇÕES:
+ * O BPMN XML já contém sourceRef/targetRef em cada sequenceFlow.
+ * O atributo `name` do sequenceFlow (ex: "Aprovar", "Reprovar") é o triggerAction.
+ * Quando há FlowConfigs salvos com label, esses prevalecem sobre o name do XML.
+ * Gateways são atravessados transparentemente — a transição vai da atividade
+ * diretamente até a próxima atividade, usando o label do arco de saída do gateway.
  */
 
-const WORKFLOWS_KEY = 'gestao-docs:workflows'
-const ELEMENT_CONFIGS_KEY = 'gestao-docs:workflow-element-configs'
-const LEGACY_ELEMENT_CONFIGS_KEY = 'workflow-element-configs'
+const WORKFLOWS_KEY               = 'gestao-docs:workflows'
+const ELEMENT_CONFIGS_KEY         = 'gestao-docs:workflow-element-configs'
+const LEGACY_ELEMENT_CONFIGS_KEY  = 'workflow-element-configs'
 const LEGACY_ACTIVITY_CONFIGS_KEY = 'gestao-docs:workflow-activity-configs'
 
 export type StoredWorkflowStep = {
@@ -16,8 +22,15 @@ export type StoredWorkflowStep = {
   orderIndex: number
   isInitial?: boolean
   isFinal?: boolean
+  kind?: string
   allowedActions?: string[]
-  actions?: Array<{ id: string; label: string; color: string; outcome: string; requiresComment: boolean }>
+  actions?: Array<{
+    id: string
+    label: string
+    color: string
+    outcome: string
+    requiresComment: boolean
+  }>
   responsibles?: Array<{ type: string; id?: string; name: string }>
   transitions?: Array<{ triggerAction: string; toStepOrderIndex: number }>
   deadlineMode?: string
@@ -44,11 +57,27 @@ export type StoredWorkflow = {
   updatedAt: string
   createdAt?: string
   permissions?: {
-    visualization?: { userIds?: string[]; groupIds?: string[]; processIds?: string[]; areaIds?: string[]; disciplineIds?: string[]; roleIds?: string[] }
-    creation?:      { userIds?: string[]; groupIds?: string[]; processIds?: string[]; areaIds?: string[]; disciplineIds?: string[]; roleIds?: string[] }
+    visualization?: {
+      userIds?: string[]
+      groupIds?: string[]
+      processIds?: string[]
+      areaIds?: string[]
+      disciplineIds?: string[]
+      roleIds?: string[]
+    }
+    creation?: {
+      userIds?: string[]
+      groupIds?: string[]
+      processIds?: string[]
+      areaIds?: string[]
+      disciplineIds?: string[]
+      roleIds?: string[]
+    }
   }
   steps?: StoredWorkflowStep[]
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function safeParseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback
@@ -60,32 +89,50 @@ function readArray(key: string): any[] {
   return Array.isArray(raw) ? raw : []
 }
 
-// ─── Reconstrução de steps a partir do BPMN XML ───────────────────────────────
+// ─── Tipos internos ───────────────────────────────────────────────────────────
 
-type BpmnEdge = { id: string; sourceRef: string; targetRef: string; name?: string }
-type BpmnNode = { id: string; type: string; name?: string }
+type BpmnEdge = {
+  id: string
+  sourceRef: string
+  targetRef: string
+  name?: string
+}
+
+type BpmnNode = {
+  id: string
+  type: string
+  name?: string
+}
+
+// ─── Parser BPMN XML ──────────────────────────────────────────────────────────
 
 function parseBpmnGraph(xml: string): { nodes: BpmnNode[]; edges: BpmnEdge[] } {
   const nodes: BpmnNode[] = []
   const edges: BpmnEdge[] = []
   if (!xml?.trim()) return { nodes, edges }
+
   try {
-    const doc = new DOMParser().parseFromString(xml, 'application/xml')
+    const doc     = new DOMParser().parseFromString(xml, 'application/xml')
     const process = doc.querySelector('process') ?? doc.querySelector('[localName="process"]')
     if (!process) return { nodes, edges }
+
     for (const el of Array.from(process.children)) {
       const id = el.getAttribute('id')
       if (!id) continue
       const name = el.getAttribute('name') ?? undefined
+
       if (el.localName === 'sequenceFlow') {
         const sourceRef = el.getAttribute('sourceRef')
         const targetRef = el.getAttribute('targetRef')
-        if (sourceRef && targetRef) edges.push({ id, sourceRef, targetRef, name })
+        if (sourceRef && targetRef) {
+          edges.push({ id, sourceRef, targetRef, name: name?.trim() || undefined })
+        }
       } else {
         nodes.push({ id, type: el.localName, name })
       }
     }
   } catch { /* ignore */ }
+
   return { nodes, edges }
 }
 
@@ -95,147 +142,164 @@ function isActivityNode(type: string): boolean {
 }
 function isStartNode(type: string): boolean { return type === 'startEvent' }
 function isEndNode(type: string): boolean   { return type === 'endEvent' }
+function isGateway(type: string): boolean   {
+  return ['exclusiveGateway', 'inclusiveGateway', 'parallelGateway',
+          'eventBasedGateway', 'complexGateway'].includes(type)
+}
 
-/**
- * A partir de um nó (pode ser gateway/evento), percorre transitivamente os arcos de saída
- * até encontrar atividades ou eventos finais, atravessando gateways.
- * Retorna { activityIds, leadsToEnd }.
- * O parâmetro `seen` evita loops infinitos em ciclos do diagrama.
- */
-function resolveTargets(
-  nodeId: string,
+// ─── Resolve atividades alcançáveis atravessando gateways ────────────────────
+
+type ResolvedTarget = {
+  activityId: string
+  edgeLabel?: string
+  edgeId: string
+}
+
+function resolveActivityTargets(
+  fromNodeId: string,
   nodeMap: Map<string, BpmnNode>,
   outEdges: Map<string, BpmnEdge[]>,
   seen = new Set<string>(),
-): { activityIds: string[]; leadsToEnd: boolean } {
-  if (seen.has(nodeId)) return { activityIds: [], leadsToEnd: false }
-  seen.add(nodeId)
+  inheritedLabel?: string,
+  inheritedEdgeId = '',
+): ResolvedTarget[] {
+  if (seen.has(fromNodeId)) return []
+  seen.add(fromNodeId)
 
-  const activityIds: string[] = []
-  let leadsToEnd = false
+  const results: ResolvedTarget[] = []
 
-  for (const edge of outEdges.get(nodeId) ?? []) {
+  for (const edge of outEdges.get(fromNodeId) ?? []) {
     const target = nodeMap.get(edge.targetRef)
     if (!target) continue
 
+    const currentLabel  = edge.name?.trim() || inheritedLabel
+    const currentEdgeId = edge.id || inheritedEdgeId
+
     if (isActivityNode(target.type)) {
-      activityIds.push(edge.targetRef)
-    } else if (isEndNode(target.type)) {
-      leadsToEnd = true
-    } else {
-      // Gateway, evento intermediário, etc. — atravessa recursivamente
-      const inner = resolveTargets(edge.targetRef, nodeMap, outEdges, new Set(seen))
-      activityIds.push(...inner.activityIds)
-      if (inner.leadsToEnd) leadsToEnd = true
+      results.push({ activityId: edge.targetRef, edgeLabel: currentLabel, edgeId: currentEdgeId })
+    } else if (!isEndNode(target.type)) {
+      const inner = resolveActivityTargets(
+        edge.targetRef, nodeMap, outEdges, new Set(seen), currentLabel, currentEdgeId,
+      )
+      results.push(...inner)
     }
   }
 
-  return { activityIds, leadsToEnd }
+  return results
 }
 
-function buildStepFromConfig(
-  elementId: string,
-  elementName: string,
-  orderIndex: number,
-  isInitial: boolean,
-  isFinal: boolean,
-  transitions: Array<{ triggerAction: string; toStepOrderIndex: number }>,
-  cfg: any | null,
-): StoredWorkflowStep {
-  let allowedActions: string[] = []
-  let responsibles: Array<{ type: string; id?: string; name: string }> = []
-  const configuredActions: Array<{ id: string; label: string; color: string; outcome: string; requiresComment: boolean }> = []
-  let metadataFields: StoredWorkflowStep['metadataFields']
-
-  if (cfg) {
-    const c = cfg.config ?? cfg
-
-    // ── Ações configuradas ────────────────────────────────────────────────────
-    if (Array.isArray(c.actions) && c.actions.length > 0) {
-      for (const a of c.actions) {
-        const outcome = String(a.outcome ?? a.label ?? '')
-        if (outcome && !allowedActions.includes(outcome)) allowedActions.push(outcome)
-        configuredActions.push({
-          id:              String(a.id ?? a.outcome ?? a.label ?? ''),
-          label:           String(a.label ?? outcome),
-          color:           String(a.color ?? 'default'),
-          outcome,
-          requiresComment: Boolean(a.requiresComment),
-        })
-      }
-    } else {
-      if (c.allowApprove)        { allowedActions.push('approve');  configuredActions.push({ id: 'approve',  label: 'Aprovar',    color: 'green',  outcome: 'approve',  requiresComment: false }) }
-      if (c.allowReject)         { allowedActions.push('reject');   configuredActions.push({ id: 'reject',   label: 'Reprovar',   color: 'red',    outcome: 'reject',   requiresComment: true  }) }
-      if (c.allowRequestChanges) { allowedActions.push('return');   configuredActions.push({ id: 'return',   label: 'Devolver',   color: 'orange', outcome: 'return',   requiresComment: true  }) }
-      if (c.allowForward)        { allowedActions.push('forward');  configuredActions.push({ id: 'forward',  label: 'Encaminhar', color: 'blue',   outcome: 'forward',  requiresComment: false }) }
+function leadsToEnd(
+  fromNodeId: string,
+  nodeMap: Map<string, BpmnNode>,
+  outEdges: Map<string, BpmnEdge[]>,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(fromNodeId)) return false
+  seen.add(fromNodeId)
+  for (const edge of outEdges.get(fromNodeId) ?? []) {
+    const target = nodeMap.get(edge.targetRef)
+    if (!target) continue
+    if (isEndNode(target.type)) return true
+    if (!isActivityNode(target.type)) {
+      if (leadsToEnd(edge.targetRef, nodeMap, outEdges, new Set(seen))) return true
     }
+  }
+  return false
+}
 
-    // ── Responsáveis ──────────────────────────────────────────────────────────
-    const mode = String(c.assignmentMode ?? 'dynamic')
-    if (mode === 'user' && Array.isArray(c.responsibleUserIds) && c.responsibleUserIds.length > 0)
-      responsibles = [{ type: 'user', id: String(c.responsibleUserIds[0]), name: '' }]
-    else if (mode === 'role' && Array.isArray(c.responsibleRoleIds) && c.responsibleRoleIds.length > 0)
-      responsibles = [{ type: 'role', id: String(c.responsibleRoleIds[0]), name: '' }]
-    else if (mode === 'group' && Array.isArray(c.responsibleGroupIds) && c.responsibleGroupIds.length > 0)
-      responsibles = [{ type: 'group', id: String(c.responsibleGroupIds[0]), name: '' }]
-    else if (mode === 'mixed') {
-      if (Array.isArray(c.responsibleUserIds) && c.responsibleUserIds.length > 0)
-        responsibles = [{ type: 'user', id: String(c.responsibleUserIds[0]), name: '' }]
-      else if (Array.isArray(c.responsibleRoleIds) && c.responsibleRoleIds.length > 0)
-        responsibles = [{ type: 'role', id: String(c.responsibleRoleIds[0]), name: '' }]
-      else if (Array.isArray(c.responsibleGroupIds) && c.responsibleGroupIds.length > 0)
-        responsibles = [{ type: 'group', id: String(c.responsibleGroupIds[0]), name: '' }]
-      else responsibles = [{ type: 'dynamic', name: 'Criador' }]
-    } else {
-      responsibles = [{ type: 'dynamic', name: 'Criador' }]
-    }
+// ─── Constrói ações ───────────────────────────────────────────────────────────
 
-    // ── Metadados configurados para este step ──────────────────────────────────
-    if (Array.isArray(c.metadataFields) && c.metadataFields.length > 0) {
-      metadataFields = c.metadataFields.map((f: any) => ({
-        metadataDefinitionId: String(f.metadataDefinitionId ?? ''),
-        name:       typeof f.name      === 'string' ? f.name      : undefined,
-        label:      typeof f.label     === 'string' ? f.label     : undefined,
-        fieldType:  typeof f.fieldType === 'string' ? f.fieldType : 'text',
-        isRequired: Boolean(f.isRequired),
-        isReadOnly: Boolean(f.isReadOnly),
+type ActionItem = { id: string; label: string; color: string; outcome: string; requiresComment: boolean }
+type ActionsResult = { allowedActions: string[]; actions: ActionItem[] }
+
+function buildActions(cfg: any, isFinal: boolean, isInitial: boolean): ActionsResult {
+  const c = cfg?.config ?? cfg
+
+  if (c && Array.isArray(c.actions) && c.actions.length > 0) {
+    const actions = c.actions.map((a: any) => ({
+      id:              String(a.id      ?? a.outcome ?? ''),
+      label:           String(a.label   ?? a.outcome ?? ''),
+      color:           String(a.color   ?? 'default'),
+      outcome:         String(a.outcome ?? ''),
+      requiresComment: Boolean(a.requiresComment),
+    }))
+    return { allowedActions: actions.map((a: any) => a.outcome).filter(Boolean), actions }
+  }
+
+  if (c) {
+    type Row = [boolean, string, string, string, boolean]
+    const rows: Row[] = [
+      [c.allowApprove        !== false, 'approve',         'Aprovar',           'green',  false],
+      [c.allowReject         !== false, 'reject',          'Reprovar',          'red',    true ],
+      [c.allowRequestChanges !== false, 'request-changes', 'Solicitar ajustes', 'orange', true ],
+      [Boolean(c.allowForward),         'forward',         'Encaminhar',        'blue',   false],
+    ]
+    const actions = rows
+      .filter(([enabled]) => enabled)
+      .map(([, outcome, label, color, requiresComment]) => ({
+        id: outcome, label, color, outcome, requiresComment,
       }))
-    }
-  } else {
-    allowedActions = isFinal ? ['publish'] : isInitial ? ['submit'] : ['approve', 'reject']
-    responsibles   = [{ type: 'dynamic', name: 'Criador' }]
+    return { allowedActions: actions.map((a: { outcome: string }) => a.outcome), actions }
   }
 
-  // Fallbacks de ações
-  if (allowedActions.length === 0) {
-    allowedActions = isFinal ? ['publish'] : isInitial ? ['submit'] : ['approve']
-  }
-  if (configuredActions.length === 0) {
-    if (isFinal)        configuredActions.push({ id: 'publish', label: 'Publicar', color: 'green', outcome: 'publish', requiresComment: false })
-    else if (isInitial) configuredActions.push({ id: 'submit',  label: 'Submeter', color: 'blue',  outcome: 'submit',  requiresComment: false })
-    else                configuredActions.push({ id: 'approve', label: 'Aprovar',  color: 'green', outcome: 'approve', requiresComment: false })
-  }
-
-  const deadlineMode  = cfg ? String((cfg.config ?? cfg)?.deadlineMode  ?? '') || undefined : undefined
-  const deadlineValue = cfg ? (cfg.config ?? cfg)?.deadlineValue : undefined
-
+  if (isFinal)   return { allowedActions: ['publish'],         actions: [{ id: 'publish', label: 'Publicar', color: 'green', outcome: 'publish', requiresComment: false }] }
+  if (isInitial) return { allowedActions: ['submit'],          actions: [{ id: 'submit',  label: 'Submeter', color: 'blue',  outcome: 'submit',  requiresComment: false }] }
   return {
-    id: elementId, name: elementName, orderIndex, isInitial, isFinal,
-    allowedActions, actions: configuredActions, responsibles, transitions,
-    deadlineMode, deadlineValue,
-    ...(metadataFields && metadataFields.length > 0 ? { metadataFields } : {}),
+    allowedActions: ['approve', 'reject'],
+    actions: [
+      { id: 'approve', label: 'Aprovar',  color: 'green', outcome: 'approve', requiresComment: false },
+      { id: 'reject',  label: 'Reprovar', color: 'red',   outcome: 'reject',  requiresComment: true  },
+    ],
   }
 }
 
-/**
- * Reconstrói a lista de steps a partir do BPMN XML e das element configs.
- * Atravessa gateways ao calcular transições (fix para desvios no fluxo).
- */
-function buildStepsFromBpmn(bpmnXml: string, workflowId: string, allElementConfigs: any[]): StoredWorkflowStep[] {
-  const { nodes, edges } = parseBpmnGraph(bpmnXml)
-  if (nodes.length === 0) return []
+// ─── Constrói responsáveis ────────────────────────────────────────────────────
 
-  const nodeMap = new Map<string, BpmnNode>(nodes.map((n) => [n.id, n]))
+function buildResponsibles(cfg: any): StoredWorkflowStep['responsibles'] {
+  const c = cfg?.config ?? cfg
+  if (!c) return [{ type: 'dynamic', name: 'Criador' }]
+  const mode = String(c.assignmentMode ?? '')
+  const try_ = (ids: any, type: string) =>
+    Array.isArray(ids) && ids.length > 0 ? [{ type, id: String(ids[0]), name: '' }] : null
+  if (mode === 'user')      return try_(c.responsibleUserIds,     'user')     ?? [{ type: 'dynamic', name: 'Criador' }]
+  if (mode === 'role')      return try_(c.responsibleRoleIds,     'role')     ?? [{ type: 'dynamic', name: 'Criador' }]
+  if (mode === 'group')     return try_(c.responsibleGroupIds,    'group')    ?? [{ type: 'dynamic', name: 'Criador' }]
+  if (mode === 'positions') return try_(c.responsibleRoleIds, 'role') ?? try_(c.responsibleFunctionIds, 'function') ?? [{ type: 'dynamic', name: 'Criador' }]
+  if (mode === 'mixed')     return try_(c.responsibleUserIds, 'user') ?? try_(c.responsibleRoleIds, 'role') ?? try_(c.responsibleGroupIds, 'group') ?? [{ type: 'dynamic', name: 'Criador' }]
+  return [{ type: 'dynamic', name: 'Criador' }]
+}
+
+// ─── Constrói metadados ───────────────────────────────────────────────────────
+
+function buildMetadataFields(cfg: any): StoredWorkflowStep['metadataFields'] {
+  const c = cfg?.config ?? cfg
+  if (!c || !Array.isArray(c.metadataFields) || !c.metadataFields.length) return undefined
+  return c.metadataFields.map((f: any) => ({
+    metadataDefinitionId: String(f.metadataDefinitionId ?? ''),
+    name:       typeof f.name      === 'string' ? f.name      : undefined,
+    label:      typeof f.label     === 'string' ? f.label     : undefined,
+    fieldType:  typeof f.fieldType === 'string' ? f.fieldType : 'text',
+    isRequired: Boolean(f.isRequired),
+    isReadOnly: Boolean(f.isReadOnly),
+  }))
+}
+
+// ─── Conjuntos de outcomes ────────────────────────────────────────────────────
+
+const REJECTION_OUTCOMES = new Set(['reject', 'return', 'request-changes'])
+const FORWARD_OUTCOMES   = new Set(['approve', 'submit', 'publish', 'forward', 'complete'])
+
+// ─── buildStepsFromBpmn ───────────────────────────────────────────────────────
+
+function buildStepsFromBpmn(
+  bpmnXml: string,
+  workflowId: string,
+  allElementConfigs: any[],
+): StoredWorkflowStep[] {
+  const { nodes, edges } = parseBpmnGraph(bpmnXml)
+  if (!nodes.length) return []
+
+  const nodeMap  = new Map<string, BpmnNode>(nodes.map((n) => [n.id, n]))
   const outEdges = new Map<string, BpmnEdge[]>()
   for (const edge of edges) {
     const list = outEdges.get(edge.sourceRef) ?? []
@@ -243,121 +307,255 @@ function buildStepsFromBpmn(bpmnXml: string, workflowId: string, allElementConfi
     outEdges.set(edge.sourceRef, list)
   }
 
-  const wfConfigs = allElementConfigs.filter((c: any) => c.workflowId === workflowId)
+  const wfConfigs       = allElementConfigs.filter((c: any) => c.workflowId === workflowId)
   const configByElement = new Map<string, any>(wfConfigs.map((c: any) => [String(c.elementId), c]))
 
-  // BFS para determinar a ordem das atividades (ignora gateways/eventos)
-  const startNode = nodes.find((n) => isStartNode(n.type))
-  if (!startNode) return []
-
-  const bfsVisited = new Set<string>()
-  const bfsQueue: string[] = [startNode.id]
-  const activityOrder: string[] = []
-
-  while (bfsQueue.length > 0) {
-    const current = bfsQueue.shift()!
-    if (bfsVisited.has(current)) continue
-    bfsVisited.add(current)
-    const node = nodeMap.get(current)
-    if (node && isActivityNode(node.type)) activityOrder.push(current)
-    for (const edge of outEdges.get(current) ?? []) {
-      if (!bfsVisited.has(edge.targetRef)) bfsQueue.push(edge.targetRef)
+  // Labels salvos nos FlowConfigs prevalecem sobre os do XML
+  const flowLabelByEdge = new Map<string, string>()
+  for (const cfg of wfConfigs) {
+    if (cfg.kind === 'flow') {
+      const label = cfg.config?.label?.trim()
+      if (label) flowLabelByEdge.set(String(cfg.elementId), label)
     }
   }
 
-  if (activityOrder.length === 0) return []
-
-  const steps: StoredWorkflowStep[] = []
-
-  activityOrder.forEach((actId, idx) => {
-    const node        = nodeMap.get(actId)!
-    const elementName = node.name ?? `Etapa ${idx + 1}`
-    const elementCfg  = configByElement.get(actId) ?? null
-    const cfg         = elementCfg?.config ?? elementCfg
-
-    // Resolve os alvos atravessando gateways
-    const { activityIds: nextActivityIds, leadsToEnd } = resolveTargets(actId, nodeMap, outEdges)
-    const isFinal   = leadsToEnd && nextActivityIds.length === 0
-    const isInitial = idx === 0
-
-    // Pré-calcula as ações para montar transições
-    const previewActions: string[] = []
-    if (Array.isArray(cfg?.actions) && cfg.actions.length > 0) {
-      for (const a of cfg.actions) {
-        const o = String(a.outcome ?? a.label ?? '')
-        if (o) previewActions.push(o)
+  // GatewayConfigs com actionRoutes salvos — mapeiam sequenceFlowId por actionId/outcome
+  // Estrutura: gatewayId → { actionId/outcome → sequenceFlowId }
+  const gatewayRoutesByElement = new Map<string, Map<string, string>>()
+  for (const cfg of wfConfigs) {
+    if (cfg.kind === 'gateway' && Array.isArray(cfg.config?.actionRoutes)) {
+      const routeMap = new Map<string, string>()
+      for (const r of cfg.config.actionRoutes as Array<{ actionId: string; actionLabel: string; sequenceFlowId?: string }>) {
+        if (r.sequenceFlowId) {
+          // Indexa tanto pelo actionId quanto pelo outcome inferido do label
+          routeMap.set(r.actionId, r.sequenceFlowId)
+          // Também indexa pelo outcome canônico (approve, reject, etc.)
+          const outcomeLower = r.actionLabel?.toLowerCase() ?? ''
+          if (outcomeLower.includes('aprov')) routeMap.set('approve', r.sequenceFlowId)
+          else if (outcomeLower.includes('reprov')) routeMap.set('reject', r.sequenceFlowId)
+          else if (outcomeLower.includes('revis') || outcomeLower.includes('ajust') || outcomeLower.includes('solicit')) routeMap.set('request-changes', r.sequenceFlowId)
+          else if (outcomeLower.includes('encamin')) routeMap.set('forward', r.sequenceFlowId)
+          else if (outcomeLower.includes('submet')) routeMap.set('submit', r.sequenceFlowId)
+          else if (outcomeLower.includes('publi')) routeMap.set('publish', r.sequenceFlowId)
+        }
       }
-    } else {
-      if (cfg?.allowApprove)        previewActions.push('approve')
-      if (cfg?.allowReject)         previewActions.push('reject')
-      if (cfg?.allowRequestChanges) previewActions.push('return')
-      if (cfg?.allowForward)        previewActions.push('forward')
+      gatewayRoutesByElement.set(String(cfg.elementId), routeMap)
     }
-    if (previewActions.length === 0) {
-      previewActions.push(...(isFinal ? ['publish'] : isInitial ? ['submit'] : ['approve', 'reject']))
+  }
+
+  // Resolve o gateway imediatamente após uma atividade e retorna suas actionRoutes
+  function getGatewayRoutesForActivity(activityId: string): Map<string, string> | null {
+    for (const edge of outEdges.get(activityId) ?? []) {
+      const target = nodeMap.get(edge.targetRef)
+      if (target && isGateway(target.type)) {
+        const routes = gatewayRoutesByElement.get(edge.targetRef)
+        if (routes && routes.size > 0) return routes
+      }
     }
+    return null
+  }
+  const startNode = nodes.find((n) => isStartNode(n.type))
+  if (!startNode) return []
 
-    // Ações "de avanço" (não rejeitam nem cancelam — seguem o fluxo principal)
-    const forwardOutcomes = new Set(['approve', 'submit', 'publish', 'forward', 'complete'])
-    const rejectionOutcomes = new Set(['reject', 'return', 'request-changes'])
+  const visited = new Set<string>()
+  const queue   = [startNode.id]
+  const activityOrder: string[] = []
 
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    if (visited.has(cur)) continue
+    visited.add(cur)
+    const node = nodeMap.get(cur)
+    if (node && isActivityNode(node.type)) activityOrder.push(cur)
+    for (const edge of outEdges.get(cur) ?? []) {
+      if (!visited.has(edge.targetRef)) queue.push(edge.targetRef)
+    }
+  }
+
+  if (!activityOrder.length) return []
+
+  const orderByActivity = new Map<string, number>(activityOrder.map((id, i) => [id, i]))
+
+  return activityOrder.map((actId, idx) => {
+    const node        = nodeMap.get(actId)!
+    const elementName = node.name?.trim() || `Etapa ${idx + 1}`
+    const cfg         = configByElement.get(actId) ?? null
+    const isInitial   = idx === 0
+    const targets     = resolveActivityTargets(actId, nodeMap, outEdges)
+    const isFinal     = leadsToEnd(actId, nodeMap, outEdges) && targets.length === 0
+
+    const { allowedActions, actions } = buildActions(cfg, isFinal, isInitial)
+    const responsibles   = buildResponsibles(cfg)
+    const metadataFields = buildMetadataFields(cfg)
+
+    const c = cfg?.config ?? cfg
+    const deadlineMode  = c ? (String(c.deadlineMode ?? '') || undefined) : undefined
+    const deadlineValue = c ? c.deadlineValue : undefined
+
+    // ── Monta transições ────────────────────────────────────────────────────
     const transitions: Array<{ triggerAction: string; toStepOrderIndex: number }> = []
 
-    if (nextActivityIds.length === 1) {
-      // Fluxo linear (sem gateway de desvio)
-      const nextIdx = activityOrder.indexOf(nextActivityIds[0])
-      if (nextIdx >= 0) {
-        const forwardActions = previewActions.filter((a) => !rejectionOutcomes.has(a) && a !== 'cancel')
-        for (const action of forwardActions) {
-          transitions.push({ triggerAction: action, toStepOrderIndex: nextIdx })
-        }
-      }
-    } else if (nextActivityIds.length >= 2) {
-      // Gateway de desvio: separa ações de avanço das de rejeição/retorno
-      // Caminho 1 (índice mais baixo no BFS = caminho "principal")
-      // Caminho 2+ (índice mais alto = desvio/correção)
-      const sortedTargets = nextActivityIds
-        .map((id) => ({ id, idx: activityOrder.indexOf(id) }))
-        .filter((t) => t.idx >= 0)
-        .sort((a, b) => a.idx - b.idx)
-
-      const mainPath       = sortedTargets[0]
-      const correctionPath = sortedTargets[1] // desvio (ex: ajuste/correção)
-
-      // Ações de avanço → caminho principal
-      const fwdActions = previewActions.filter((a) => forwardOutcomes.has(a) || (!rejectionOutcomes.has(a) && a !== 'cancel'))
-      // Ações de rejeição → desvio (se configurado)
-      const rejActions = previewActions.filter((a) => rejectionOutcomes.has(a))
-
-      if (mainPath) {
-        for (const action of fwdActions) {
-          // Evita duplicatas
-          if (!transitions.some((t) => t.triggerAction === action)) {
-            transitions.push({ triggerAction: action, toStepOrderIndex: mainPath.idx })
+    // PRIORIDADE 1: actionRoutes salvos no GatewayConfig
+    // Se a atividade tem um gateway logo após ela com actionRoutes configurados,
+    // usa esses mapeamentos (outcome → sequenceFlowId → targetRef → orderIndex)
+    const gatewayRoutes = getGatewayRoutesForActivity(actId)
+    if (gatewayRoutes && gatewayRoutes.size > 0) {
+      const used = new Set<string>()
+      for (const action of allowedActions) {
+        const flowId = gatewayRoutes.get(action)
+        if (!flowId) continue
+        // Encontra o arco pelo ID e resolve o destino final (atravessando gateways)
+        const edge = edges.find((e) => e.id === flowId)
+        if (!edge) continue
+        // Resolve o orderIndex do destino (pode ser atividade direta ou via outro nó)
+        let destIdx: number | undefined
+        if (orderByActivity.has(edge.targetRef)) {
+          destIdx = orderByActivity.get(edge.targetRef)
+        } else {
+          // O targetRef pode ser um gateway/evento intermediário — resolve recursivamente
+          const innerTargets = resolveActivityTargets(edge.targetRef, nodeMap, outEdges)
+          if (innerTargets.length > 0) {
+            destIdx = orderByActivity.get(innerTargets[0].activityId)
           }
         }
-      }
-      if (correctionPath) {
-        for (const action of rejActions) {
-          if (!transitions.some((t) => t.triggerAction === action)) {
-            transitions.push({ triggerAction: action, toStepOrderIndex: correctionPath.idx })
-          }
+        if (destIdx !== undefined && !used.has(action)) {
+          transitions.push({ triggerAction: action, toStepOrderIndex: destIdx })
+          used.add(action)
         }
+      }
+      // Se montou transições via actionRoutes, retorna sem passar pelo fallback
+      if (transitions.length > 0) {
+        return {
+          id: actId, name: elementName, orderIndex: idx, isInitial, isFinal,
+          kind: 'activity', allowedActions, actions, responsibles, transitions,
+          ...(deadlineMode  !== undefined ? { deadlineMode }  : {}),
+          ...(deadlineValue !== undefined ? { deadlineValue } : {}),
+          ...(metadataFields?.length      ? { metadataFields } : {}),
+        } satisfies StoredWorkflowStep
       }
     }
 
-    steps.push(buildStepFromConfig(actId, elementName, idx, isInitial, isFinal, transitions, elementCfg))
+    if (targets.length === 0) {
+      // Nenhuma saída — etapa final
+    } else if (targets.length === 1) {
+      const destIdx  = orderByActivity.get(targets[0].activityId)
+      if (destIdx !== undefined) {
+        const label = flowLabelByEdge.get(targets[0].edgeId) ?? targets[0].edgeLabel
+
+        if (label) {
+          // Casa o label com ações configuradas
+          const matched = allowedActions.filter((a) =>
+            a === label ||
+            label.toLowerCase().includes(a.toLowerCase()) ||
+            a.toLowerCase().includes(label.toLowerCase()),
+          )
+          const toAdd = matched.length > 0 ? matched : [label]
+          toAdd.forEach((a) => transitions.push({ triggerAction: a, toStepOrderIndex: destIdx }))
+          // Demais ações de avanço sem transição explícita seguem o mesmo destino
+          allowedActions
+            .filter((a) => !REJECTION_OUTCOMES.has(a) && !transitions.some((t) => t.triggerAction === a))
+            .forEach((a) => transitions.push({ triggerAction: a, toStepOrderIndex: destIdx }))
+        } else {
+          // Sem label: todas as ações de avanço
+          allowedActions
+            .filter((a) => !REJECTION_OUTCOMES.has(a))
+            .forEach((a) => transitions.push({ triggerAction: a, toStepOrderIndex: destIdx }))
+        }
+      }
+    } else {
+      // Múltiplos destinos: ordena por orderIndex
+      const sorted = targets
+        .map((t) => ({ ...t, destIdx: orderByActivity.get(t.activityId) }))
+        .filter((t) => t.destIdx !== undefined)
+        .sort((a, b) => a.destIdx! - b.destIdx!)
+
+      const used = new Set<string>()
+
+      // Primeira passagem: usa labels configurados nos FlowConfigs/arcos XML
+      for (const target of sorted) {
+        const label = flowLabelByEdge.get(target.edgeId) ?? target.edgeLabel
+        if (!label) continue
+
+        const matched = allowedActions.filter((a) =>
+          !used.has(a) && (
+            a === label ||
+            label.toLowerCase().includes(a.toLowerCase()) ||
+            a.toLowerCase().includes(label.toLowerCase())
+          ),
+        )
+
+        if (matched.length > 0) {
+          matched.forEach((a) => {
+            transitions.push({ triggerAction: a, toStepOrderIndex: target.destIdx! })
+            used.add(a)
+          })
+        } else if (!used.has(label)) {
+          transitions.push({ triggerAction: label, toStepOrderIndex: target.destIdx! })
+          used.add(label)
+        }
+      }
+
+      // Segunda passagem: ações restantes por inferência
+      // Destino de maior orderIndex = avanço, menor = retorno/desvio
+      const mainTarget       = sorted.find((t) => t.destIdx! > idx) ?? sorted[sorted.length - 1]
+      const correctionTarget = sorted.find((t) => t !== mainTarget && t.destIdx! <= idx) ?? sorted[0]
+
+      if (mainTarget) {
+        allowedActions
+          .filter((a) => !used.has(a) && FORWARD_OUTCOMES.has(a))
+          .forEach((a) => {
+            transitions.push({ triggerAction: a, toStepOrderIndex: mainTarget.destIdx! })
+            used.add(a)
+          })
+      }
+
+      if (correctionTarget && correctionTarget !== mainTarget) {
+        allowedActions
+          .filter((a) => !used.has(a) && REJECTION_OUTCOMES.has(a))
+          .forEach((a) => {
+            transitions.push({ triggerAction: a, toStepOrderIndex: correctionTarget.destIdx! })
+            used.add(a)
+          })
+      }
+
+      // Restantes → caminho principal
+      if (mainTarget) {
+        allowedActions
+          .filter((a) => !used.has(a))
+          .forEach((a) => transitions.push({ triggerAction: a, toStepOrderIndex: mainTarget.destIdx! }))
+      }
+    }
+
+    return {
+      id:         actId,
+      name:       elementName,
+      orderIndex: idx,
+      isInitial,
+      isFinal,
+      kind:       'activity',
+      allowedActions,
+      actions,
+      responsibles,
+      transitions,
+      ...(deadlineMode  !== undefined ? { deadlineMode }  : {}),
+      ...(deadlineValue !== undefined ? { deadlineValue } : {}),
+      ...(metadataFields?.length      ? { metadataFields } : {}),
+    } satisfies StoredWorkflowStep
   })
-
-  return steps
 }
 
-/** Carrega todos os element configs do localStorage (primary + legacy). */
+// ─── Carrega configs ──────────────────────────────────────────────────────────
+
 function loadAllElementConfigs(): any[] {
-  return [...readArray(ELEMENT_CONFIGS_KEY), ...readArray(LEGACY_ELEMENT_CONFIGS_KEY), ...readArray(LEGACY_ACTIVITY_CONFIGS_KEY)]
+  return [
+    ...readArray(ELEMENT_CONFIGS_KEY),
+    ...readArray(LEGACY_ELEMENT_CONFIGS_KEY),
+    ...readArray(LEGACY_ACTIVITY_CONFIGS_KEY),
+  ]
 }
 
-/** Carrega todos os workflows do localStorage, com steps reconstruídos do BPMN. */
+// ─── API pública ──────────────────────────────────────────────────────────────
+
 export function loadStoredWorkflows(): StoredWorkflow[] {
   const raw = safeParseJson<any[]>(localStorage.getItem(WORKFLOWS_KEY), [])
   if (!Array.isArray(raw)) return []
@@ -367,7 +565,9 @@ export function loadStoredWorkflows(): StoredWorkflow[] {
   return raw.map((item: any) => {
     const bpmnXml    = typeof item?.bpmnXml === 'string' ? item.bpmnXml : ''
     const savedSteps = Array.isArray(item?.steps) ? item.steps : undefined
-    const steps      = savedSteps ?? (bpmnXml ? buildStepsFromBpmn(bpmnXml, String(item?.id ?? ''), allElementConfigs) : [])
+    const steps      = savedSteps ?? (bpmnXml
+      ? buildStepsFromBpmn(bpmnXml, String(item?.id ?? ''), allElementConfigs)
+      : [])
 
     return {
       id:          String(item?.id ?? ''),
@@ -376,7 +576,8 @@ export function loadStoredWorkflows(): StoredWorkflow[] {
       processId:   typeof item?.processId === 'string' && item.processId ? item.processId : undefined,
       processName: typeof item?.processName === 'string' ? item.processName : undefined,
       version:     typeof item?.version === 'string' ? item.version : '1.0',
-      status:      (['draft','active','inactive','archived'] as const).includes(item?.status) ? item.status : 'draft',
+      status:      (['draft', 'active', 'inactive', 'archived'] as const).includes(item?.status)
+        ? item.status : 'draft',
       stepsCount:  typeof item?.stepsCount === 'number' ? item.stepsCount : steps?.length ?? 0,
       updatedAt:   typeof item?.updatedAt === 'string' ? item.updatedAt : new Date().toISOString(),
       createdAt:   typeof item?.createdAt === 'string' ? item.createdAt : undefined,
@@ -386,12 +587,10 @@ export function loadStoredWorkflows(): StoredWorkflow[] {
   })
 }
 
-/** Encontra o workflow vinculado a um processo (cada processo tem no máximo 1). */
 export function findWorkflowByProcess(processId: string): StoredWorkflow | null {
   return loadStoredWorkflows().find((w) => w.processId === processId) ?? null
 }
 
-/** Encontra um workflow pelo seu ID. */
 export function findWorkflowById(id: string): StoredWorkflow | null {
   return loadStoredWorkflows().find((w) => w.id === id) ?? null
 }

@@ -37,6 +37,7 @@ function getDefaultFlowConfig(
     isDefault: false,
     notificationTemplateIds: [],
     description: undefined,
+    // sourceId/targetId são preenchidos automaticamente ao salvar — não vêm do form
   }
 }
 
@@ -77,22 +78,29 @@ export function FlowConfigPanel({
   const handleSubmit = (values: FormValues) => {
     onSave({
       workflowId,
-      elementId: selectedElement.id,
+      elementId:   selectedElement.id,
       elementType: selectedElement.type,
       elementName: selectedElement.name,
       kind: 'flow',
       config: {
-        label: values.label,
+        label:        values.label,
         conditionType: values.conditionType,
-        expression: values.expression,
+        expression:   values.expression,
         metadataFieldId: values.metadataFieldId,
-        expectedValue: values.expectedValue,
-        isDefault: values.isDefault ?? false,
+        expectedValue:   values.expectedValue,
+        isDefault:    values.isDefault ?? false,
         notificationTemplateIds: values.notificationTemplateIds ?? [],
-        description: values.description,
+        description:  values.description,
+        // CORREÇÃO: salva source e target do arco BPMN para que
+        // buildStepsFromBpmn saiba exatamente para onde este fluxo aponta
+        sourceId: selectedElement.sourceId,
+        targetId: selectedElement.targetId,
       },
     })
   }
+
+  // Exibe de onde vem e para onde vai o fluxo selecionado
+  const hasConnection = selectedElement.sourceId && selectedElement.targetId
 
   return (
     <Card
@@ -104,9 +112,19 @@ export function FlowConfigPanel({
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message={selectedElement.name || 'Fluxo'}
+        message={selectedElement.name || selectedElement.id}
         description="Defina a condição que determina quando esta transição poderá ser seguida."
       />
+
+      {hasConnection && (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`De: ${selectedElement.sourceId}  →  Para: ${selectedElement.targetId}`}
+          description="Esta informação de roteamento é salva automaticamente ao confirmar."
+        />
+      )}
 
       <Form<FormValues> form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item label="Rótulo da transição" name="label">

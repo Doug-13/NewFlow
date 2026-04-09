@@ -36,7 +36,7 @@ function createEmptyPermissionEntry(): WorkflowPermissionEntry {
 export const EMPTY_PERMISSION_ENTRY: WorkflowPermissionEntry = createEmptyPermissionEntry()
 export const EMPTY_WORKFLOW_PERMISSIONS: WorkflowPermissions = {
   visualization: createEmptyPermissionEntry(),
-  creation:      createEmptyPermissionEntry(),
+  creation: createEmptyPermissionEntry(),
 }
 
 export type WorkflowScopedBase = {
@@ -157,6 +157,12 @@ export type GatewayConfig = {
   decisionFieldId?: string
   notificationTemplateIds: string[]
   instructions?: string
+  // ADICIONE:
+  actionRoutes?: Array<{
+    actionId: string
+    actionLabel: string
+    sequenceFlowId?: string
+  }>
 }
 
 export type FlowConfig = {
@@ -168,6 +174,9 @@ export type FlowConfig = {
   isDefault?: boolean
   notificationTemplateIds: string[]
   description?: string
+  // NOVO: IDs do source e target do arco BPMN — preenchidos automaticamente ao salvar
+  sourceId?: string
+  targetId?: string
 }
 
 export type EndEventConfig = {
@@ -266,17 +275,17 @@ export type WorkflowElementConfig = WorkflowScopedBase & {
   elementName?: string
   kind: WorkflowElementKind
   config:
-    | StartEventConfig
-    | ActivityConfig
-    | GatewayConfig
-    | FlowConfig
-    | EndEventConfig
-    | NotificationEventConfig
-    | SystemTaskConfig
-    | MessageEventConfig
-    | TimerEventConfig
-    | SignalEventConfig
-    | ConditionalEventConfig
+  | StartEventConfig
+  | ActivityConfig
+  | GatewayConfig
+  | FlowConfig
+  | EndEventConfig
+  | NotificationEventConfig
+  | SystemTaskConfig
+  | MessageEventConfig
+  | TimerEventConfig
+  | SignalEventConfig
+  | ConditionalEventConfig
   createdAt: string
   updatedAt: string
 }
@@ -325,10 +334,10 @@ export type WorkflowVersionSnapshot = WorkflowScopedBase & {
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
-const WORKFLOWS_KEY             = 'gestao-docs:workflows'
-const ELEMENT_CONFIGS_KEY       = 'gestao-docs:workflow-element-configs'
-const SNAPSHOTS_KEY             = 'gestao-docs:workflow-snapshots'
-const LEGACY_ELEMENT_CONFIGS_KEY  = 'workflow-element-configs'
+const WORKFLOWS_KEY = 'gestao-docs:workflows'
+const ELEMENT_CONFIGS_KEY = 'gestao-docs:workflow-element-configs'
+const SNAPSHOTS_KEY = 'gestao-docs:workflow-snapshots'
+const LEGACY_ELEMENT_CONFIGS_KEY = 'workflow-element-configs'
 const LEGACY_ACTIVITY_CONFIGS_KEY = 'gestao-docs:workflow-activity-configs'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -390,19 +399,19 @@ function normalizeScopedBase(
   fallback?: Partial<WorkflowScopedBase>,
 ): WorkflowScopedBase {
   const accountId =
-    toOptionalString(value?.accountId)     ??
-    toOptionalString(value?.tenantId)      ??
-    toOptionalString(fallback?.accountId)  ??
-    toOptionalString(fallback?.tenantId)   ?? ''
+    toOptionalString(value?.accountId) ??
+    toOptionalString(value?.tenantId) ??
+    toOptionalString(fallback?.accountId) ??
+    toOptionalString(fallback?.tenantId) ?? ''
 
   const environmentId =
-    toOptionalNullableString(value?.environmentId)  ??
-    toOptionalNullableString(value?.unitId)         ??
+    toOptionalNullableString(value?.environmentId) ??
+    toOptionalNullableString(value?.unitId) ??
     toOptionalNullableString(fallback?.environmentId) ?? null
 
   const processId =
-    toOptionalNullableString(value?.processId)      ??
-    toOptionalNullableString(fallback?.processId)   ?? null
+    toOptionalNullableString(value?.processId) ??
+    toOptionalNullableString(fallback?.processId) ?? null
 
   const scopeLevel = normalizeScopeLevel(
     value?.scopeLevel ?? fallback?.scopeLevel,
@@ -418,22 +427,22 @@ function normalizeScopedBase(
     environmentId,
     environmentName:
       toOptionalNullableString(value?.environmentName) ??
-      toOptionalNullableString(value?.unitName)        ??
+      toOptionalNullableString(value?.unitName) ??
       toOptionalNullableString(fallback?.environmentName) ?? null,
     processId,
     processName:
-      toOptionalNullableString(value?.processName)      ??
-      toOptionalNullableString(fallback?.processName)   ?? null,
+      toOptionalNullableString(value?.processName) ??
+      toOptionalNullableString(fallback?.processName) ?? null,
     scopeLevel,
     tenantId:
-      toOptionalString(value?.tenantId)     ??
-      toOptionalString(fallback?.tenantId)  ??
+      toOptionalString(value?.tenantId) ??
+      toOptionalString(fallback?.tenantId) ??
       (accountId || undefined),
   }
 }
 
 function getScopeWeight(scopeLevel: ScopeLevel): number {
-  if (scopeLevel === 'process')     return 3
+  if (scopeLevel === 'process') return 3
   if (scopeLevel === 'environment') return 2
   return 1
 }
@@ -479,7 +488,7 @@ function normalizePermissions(value: unknown): WorkflowPermissions | undefined {
   const raw = value as Record<string, unknown>
   return {
     visualization: normalizePermissionEntry(raw.visualization),
-    creation:      normalizePermissionEntry(raw.creation),
+    creation: normalizePermissionEntry(raw.creation),
   }
 }
 
@@ -493,14 +502,14 @@ function normalizeWorkflow(item: any): WorkflowDefinition {
     version: typeof item?.version === 'string' && item.version.trim() ? item.version : '1.0',
     status:
       item?.status === 'draft' || item?.status === 'active' ||
-      item?.status === 'inactive' || item?.status === 'archived'
+        item?.status === 'inactive' || item?.status === 'archived'
         ? item.status : 'draft',
-    documentTypeId:   typeof item?.documentTypeId   === 'string' ? item.documentTypeId   : undefined,
+    documentTypeId: typeof item?.documentTypeId === 'string' ? item.documentTypeId : undefined,
     documentTypeName: typeof item?.documentTypeName === 'string' ? item.documentTypeName : undefined,
     bpmnXml: typeof item?.bpmnXml === 'string' ? item.bpmnXml : '',
     stepsCount:
       typeof item?.stepsCount === 'number' ? item.stepsCount :
-      Array.isArray(item?.steps) ? item.steps.length : 0,
+        Array.isArray(item?.steps) ? item.steps.length : 0,
     permissions: normalizePermissions(item?.permissions),
     createdAt: typeof item?.createdAt === 'string' ? item.createdAt : new Date().toISOString(),
     updatedAt: typeof item?.updatedAt === 'string' ? item.updatedAt : new Date().toISOString(),
@@ -514,12 +523,12 @@ function normalizeActivityAction(item: any): ActivityAction {
     label: typeof item?.label === 'string' ? item.label : 'Ação',
     color:
       item?.color === 'green' || item?.color === 'red' || item?.color === 'orange' ||
-      item?.color === 'blue'  || item?.color === 'purple' || item?.color === 'gold' ||
-      item?.color === 'default' ? item.color : 'default',
+        item?.color === 'blue' || item?.color === 'purple' || item?.color === 'gold' ||
+        item?.color === 'default' ? item.color : 'default',
     outcome:
       item?.outcome === 'approve' || item?.outcome === 'reject' ||
-      item?.outcome === 'request-changes' || item?.outcome === 'forward' ||
-      item?.outcome === 'custom' ? item.outcome : 'custom',
+        item?.outcome === 'request-changes' || item?.outcome === 'forward' ||
+        item?.outcome === 'custom' ? item.outcome : 'custom',
     confirmText: typeof item?.confirmText === 'string' ? item.confirmText : undefined,
     requiresComment: Boolean(item?.requiresComment),
   }
@@ -531,14 +540,14 @@ function normalizeSendTaskConfig(item: any): SendTaskConfig | undefined {
     notificationTemplateId: typeof item.notificationTemplateId === 'string' ? item.notificationTemplateId : undefined,
     channel:
       item.channel === 'email' || item.channel === 'in-app' || item.channel === 'whatsapp' ||
-      item.channel === 'sms'   || item.channel === 'all' ? item.channel : 'email',
+        item.channel === 'sms' || item.channel === 'all' ? item.channel : 'email',
     recipientRoleIds: toStringArray(item.recipientRoleIds),
     recipientUserIds: toStringArray(item.recipientUserIds),
     recipientAreaIds: toStringArray(item.recipientAreaIds),
-    notifyInitiator:         Boolean(item.notifyInitiator),
+    notifyInitiator: Boolean(item.notifyInitiator),
     notifyPreviousAssignees: Boolean(item.notifyPreviousAssignees),
     customSubject: typeof item.customSubject === 'string' ? item.customSubject : undefined,
-    customBody:    typeof item.customBody    === 'string' ? item.customBody    : undefined,
+    customBody: typeof item.customBody === 'string' ? item.customBody : undefined,
     contextVariables: toStringArray(item.contextVariables),
   }
 }
@@ -550,21 +559,21 @@ function normalizeActivityConfigValue(item: any): ActivityConfig {
 
   const metadataFields: ActivityMetadataFieldRule[] = Array.isArray(item?.metadataFields)
     ? item.metadataFields
-        .filter((v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object')
-        .map((field: Record<string, unknown>): ActivityMetadataFieldRule => ({
-          metadataDefinitionId: String(field.metadataDefinitionId ?? ''),
-          name:          typeof field.name          === 'string' ? field.name          : undefined,
-          label:         typeof field.label         === 'string' ? field.label         : undefined,
-          fieldType:     typeof field.fieldType     === 'string' ? field.fieldType     : undefined,
-          metadataSetId: typeof field.metadataSetId === 'string' ? field.metadataSetId : undefined,
-          metadataSetName: typeof field.metadataSetName === 'string' ? field.metadataSetName : undefined,
-          isRequired: Boolean(field.isRequired),
-          isReadOnly: Boolean(field.isReadOnly),
-        }))
-        .filter((field: ActivityMetadataFieldRule) => Boolean(field.metadataDefinitionId))
-    : metadataDefinitionIds.map((id: string): ActivityMetadataFieldRule => ({
-        metadataDefinitionId: id, isRequired: false, isReadOnly: false,
+      .filter((v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object')
+      .map((field: Record<string, unknown>): ActivityMetadataFieldRule => ({
+        metadataDefinitionId: String(field.metadataDefinitionId ?? ''),
+        name: typeof field.name === 'string' ? field.name : undefined,
+        label: typeof field.label === 'string' ? field.label : undefined,
+        fieldType: typeof field.fieldType === 'string' ? field.fieldType : undefined,
+        metadataSetId: typeof field.metadataSetId === 'string' ? field.metadataSetId : undefined,
+        metadataSetName: typeof field.metadataSetName === 'string' ? field.metadataSetName : undefined,
+        isRequired: Boolean(field.isRequired),
+        isReadOnly: Boolean(field.isReadOnly),
       }))
+      .filter((field: ActivityMetadataFieldRule) => Boolean(field.metadataDefinitionId))
+    : metadataDefinitionIds.map((id: string): ActivityMetadataFieldRule => ({
+      metadataDefinitionId: id, isRequired: false, isReadOnly: false,
+    }))
 
   const resolvedMetadataDefinitionIds: string[] =
     metadataFields.length > 0
@@ -573,35 +582,35 @@ function normalizeActivityConfigValue(item: any): ActivityConfig {
 
   return {
     assignmentMode:
-      item?.assignmentMode === 'user'      || item?.assignmentMode === 'role'     ||
-      item?.assignmentMode === 'area'      || item?.assignmentMode === 'function' ||
-      item?.assignmentMode === 'group'     || item?.assignmentMode === 'positions'||
-      item?.assignmentMode === 'mixed' ? item.assignmentMode : 'user',
-    responsibleUserIds:     toStringArray(item?.responsibleUserIds),
-    responsibleRoleIds:     toStringArray(item?.responsibleRoleIds),
-    responsibleAreaIds:     toStringArray(item?.responsibleAreaIds),
+      item?.assignmentMode === 'user' || item?.assignmentMode === 'role' ||
+        item?.assignmentMode === 'area' || item?.assignmentMode === 'function' ||
+        item?.assignmentMode === 'group' || item?.assignmentMode === 'positions' ||
+        item?.assignmentMode === 'mixed' ? item.assignmentMode : 'user',
+    responsibleUserIds: toStringArray(item?.responsibleUserIds),
+    responsibleRoleIds: toStringArray(item?.responsibleRoleIds),
+    responsibleAreaIds: toStringArray(item?.responsibleAreaIds),
     responsibleFunctionIds: toStringArray(item?.responsibleFunctionIds),
-    responsibleGroupIds:    toStringArray(item?.responsibleGroupIds),
+    responsibleGroupIds: toStringArray(item?.responsibleGroupIds),
     deadlineMode:
       item?.deadlineMode === 'hours' || item?.deadlineMode === 'days' ||
-      item?.deadlineMode === 'fixed-date' || item?.deadlineMode === 'metadata'
+        item?.deadlineMode === 'fixed-date' || item?.deadlineMode === 'metadata'
         ? item.deadlineMode : 'days',
     deadlineValue:
       typeof item?.deadlineValue === 'number' || typeof item?.deadlineValue === 'string'
         ? item.deadlineValue : undefined,
     deadlineMetadataFieldId:
       typeof item?.deadlineMetadataFieldId === 'string' ? item.deadlineMetadataFieldId : undefined,
-    metadataSetIds:          toStringArray(item?.metadataSetIds),
-    metadataDefinitionIds:   resolvedMetadataDefinitionIds,
+    metadataSetIds: toStringArray(item?.metadataSetIds),
+    metadataDefinitionIds: resolvedMetadataDefinitionIds,
     metadataFields,
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
-    allowApprove:        Boolean(item?.allowApprove        ?? true),
-    allowReject:         Boolean(item?.allowReject         ?? true),
+    allowApprove: Boolean(item?.allowApprove ?? true),
+    allowReject: Boolean(item?.allowReject ?? true),
     allowRequestChanges: Boolean(item?.allowRequestChanges ?? true),
-    allowForward:        Boolean(item?.allowForward        ?? false),
-    instructions:   typeof item?.instructions === 'string' ? item.instructions : undefined,
-    helpText:       typeof item?.helpText      === 'string' ? item.helpText      : undefined,
-    actions:        Array.isArray(item?.actions) ? item.actions.map(normalizeActivityAction) : undefined,
+    allowForward: Boolean(item?.allowForward ?? false),
+    instructions: typeof item?.instructions === 'string' ? item.instructions : undefined,
+    helpText: typeof item?.helpText === 'string' ? item.helpText : undefined,
+    actions: Array.isArray(item?.actions) ? item.actions.map(normalizeActivityAction) : undefined,
     linkedWorkflowId: typeof item?.linkedWorkflowId === 'string' ? item.linkedWorkflowId : undefined,
     sendTask: normalizeSendTaskConfig(item?.sendTask),
   }
@@ -619,41 +628,41 @@ function buildActivityElementConfigPayload(
   >,
 ): ActivityConfig {
   return {
-    assignmentMode:          item.assignmentMode,
-    responsibleUserIds:      item.responsibleUserIds,
-    responsibleRoleIds:      item.responsibleRoleIds,
-    responsibleAreaIds:      item.responsibleAreaIds,
-    responsibleFunctionIds:  item.responsibleFunctionIds,
-    responsibleGroupIds:     item.responsibleGroupIds,
-    deadlineMode:            item.deadlineMode,
-    deadlineValue:           item.deadlineValue,
+    assignmentMode: item.assignmentMode,
+    responsibleUserIds: item.responsibleUserIds,
+    responsibleRoleIds: item.responsibleRoleIds,
+    responsibleAreaIds: item.responsibleAreaIds,
+    responsibleFunctionIds: item.responsibleFunctionIds,
+    responsibleGroupIds: item.responsibleGroupIds,
+    deadlineMode: item.deadlineMode,
+    deadlineValue: item.deadlineValue,
     deadlineMetadataFieldId: item.deadlineMetadataFieldId,
-    metadataSetIds:          item.metadataSetIds,
-    metadataDefinitionIds:   item.metadataDefinitionIds,
-    metadataFields:          item.metadataFields,
+    metadataSetIds: item.metadataSetIds,
+    metadataDefinitionIds: item.metadataDefinitionIds,
+    metadataFields: item.metadataFields,
     notificationTemplateIds: item.notificationTemplateIds,
-    allowApprove:            item.allowApprove,
-    allowReject:             item.allowReject,
-    allowRequestChanges:     item.allowRequestChanges,
-    allowForward:            item.allowForward,
-    instructions:            item.instructions,
-    helpText:                item.helpText,
-    actions:                 item.actions,
-    linkedWorkflowId:        item.linkedWorkflowId,
-    sendTask:                item.sendTask,
+    allowApprove: item.allowApprove,
+    allowReject: item.allowReject,
+    allowRequestChanges: item.allowRequestChanges,
+    allowForward: item.allowForward,
+    instructions: item.instructions,
+    helpText: item.helpText,
+    actions: item.actions,
+    linkedWorkflowId: item.linkedWorkflowId,
+    sendTask: item.sendTask,
   }
 }
 
 function normalizeStartEventConfig(item: any): StartEventConfig {
   return {
     initialMetadataDefinitionIds: toStringArray(item?.initialMetadataDefinitionIds),
-    metadataSetIds:          toStringArray(item?.metadataSetIds),
-    metadataFields:          Array.isArray(item?.metadataFields) ? item.metadataFields : undefined,
+    metadataSetIds: toStringArray(item?.metadataSetIds),
+    metadataFields: Array.isArray(item?.metadataFields) ? item.metadataFields : undefined,
     requiredAttachmentTypes: toStringArray(item?.requiredAttachmentTypes),
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
-    allowedStarterRoleIds:   toStringArray(item?.allowedStarterRoleIds),
+    allowedStarterRoleIds: toStringArray(item?.allowedStarterRoleIds),
     instructions: typeof item?.instructions === 'string' ? item.instructions : undefined,
-    formTitle:    typeof item?.formTitle    === 'string' ? item.formTitle    : undefined,
+    formTitle: typeof item?.formTitle === 'string' ? item.formTitle : undefined,
   }
 }
 
@@ -661,11 +670,21 @@ function normalizeGatewayConfig(item: any): GatewayConfig {
   return {
     decisionMode:
       item?.decisionMode === 'manual' || item?.decisionMode === 'metadata-rule' ||
-      item?.decisionMode === 'expression' ? item.decisionMode : 'manual',
+        item?.decisionMode === 'expression' ? item.decisionMode : 'manual',
     decisionDescription: typeof item?.decisionDescription === 'string' ? item.decisionDescription : undefined,
-    decisionFieldId:     typeof item?.decisionFieldId     === 'string' ? item.decisionFieldId     : undefined,
+    decisionFieldId: typeof item?.decisionFieldId === 'string' ? item.decisionFieldId : undefined,
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
     instructions: typeof item?.instructions === 'string' ? item.instructions : undefined,
+    // ADICIONE:
+    actionRoutes: Array.isArray(item?.actionRoutes)
+      ? item.actionRoutes
+        .filter((r: any) => r && typeof r === 'object')
+        .map((r: any) => ({
+          actionId: String(r.actionId ?? ''),
+          actionLabel: String(r.actionLabel ?? ''),
+          sequenceFlowId: typeof r.sequenceFlowId === 'string' ? r.sequenceFlowId : undefined,
+        }))
+      : undefined,
   }
 }
 
@@ -674,29 +693,32 @@ function normalizeFlowConfig(item: any): FlowConfig {
     label: typeof item?.label === 'string' ? item.label : undefined,
     conditionType:
       item?.conditionType === 'always' || item?.conditionType === 'expression' ||
-      item?.conditionType === 'metadata-value' ? item.conditionType : 'always',
-    expression:       typeof item?.expression       === 'string' ? item.expression       : undefined,
-    metadataFieldId:  typeof item?.metadataFieldId  === 'string' ? item.metadataFieldId  : undefined,
-    expectedValue:    typeof item?.expectedValue    === 'string' ? item.expectedValue    : undefined,
-    isDefault:        Boolean(item?.isDefault),
+        item?.conditionType === 'metadata-value' ? item.conditionType : 'always',
+    expression: typeof item?.expression === 'string' ? item.expression : undefined,
+    metadataFieldId: typeof item?.metadataFieldId === 'string' ? item.metadataFieldId : undefined,
+    expectedValue: typeof item?.expectedValue === 'string' ? item.expectedValue : undefined,
+    isDefault: Boolean(item?.isDefault),
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
     description: typeof item?.description === 'string' ? item.description : undefined,
+    // NOVO
+    sourceId: typeof item?.sourceId === 'string' ? item.sourceId : undefined,
+    targetId: typeof item?.targetId === 'string' ? item.targetId : undefined,
   }
 }
 
 function normalizeEndEventConfig(item: any): EndEventConfig {
   return {
     finalMetadataDefinitionIds: toStringArray(item?.finalMetadataDefinitionIds),
-    metadataSetIds:  toStringArray(item?.metadataSetIds),
-    metadataFields:  Array.isArray(item?.metadataFields) ? item.metadataFields : undefined,
+    metadataSetIds: toStringArray(item?.metadataSetIds),
+    metadataFields: Array.isArray(item?.metadataFields) ? item.metadataFields : undefined,
     summarySections: toStringArray(item?.summarySections),
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
     finalAction:
       item?.finalAction === 'complete' || item?.finalAction === 'archive' ||
-      item?.finalAction === 'publish'  || item?.finalAction === 'open-linked-workflow'
+        item?.finalAction === 'publish' || item?.finalAction === 'open-linked-workflow'
         ? item.finalAction : 'complete',
     linkedWorkflowId: typeof item?.linkedWorkflowId === 'string' ? item.linkedWorkflowId : undefined,
-    instructions:     typeof item?.instructions     === 'string' ? item.instructions     : undefined,
+    instructions: typeof item?.instructions === 'string' ? item.instructions : undefined,
   }
 }
 
@@ -705,14 +727,14 @@ function normalizeNotificationEventConfig(item: any): NotificationEventConfig {
     notificationTemplateId: typeof item?.notificationTemplateId === 'string' ? item.notificationTemplateId : undefined,
     channel:
       item?.channel === 'email' || item?.channel === 'in-app' || item?.channel === 'whatsapp' ||
-      item?.channel === 'sms'   || item?.channel === 'all' ? item.channel : 'email',
+        item?.channel === 'sms' || item?.channel === 'all' ? item.channel : 'email',
     recipientRoleIds: toStringArray(item?.recipientRoleIds),
     recipientUserIds: toStringArray(item?.recipientUserIds),
     recipientAreaIds: toStringArray(item?.recipientAreaIds),
-    notifyInitiator:         Boolean(item?.notifyInitiator),
+    notifyInitiator: Boolean(item?.notifyInitiator),
     notifyPreviousAssignees: Boolean(item?.notifyPreviousAssignees),
     customSubject: typeof item?.customSubject === 'string' ? item.customSubject : undefined,
-    customBody:    typeof item?.customBody    === 'string' ? item.customBody    : undefined,
+    customBody: typeof item?.customBody === 'string' ? item.customBody : undefined,
     contextVariables: toStringArray(item?.contextVariables),
   }
 }
@@ -721,8 +743,8 @@ function normalizeSystemTaskConfig(item: any): SystemTaskConfig {
   return {
     actionType:
       item?.actionType === 'increment-revision' || item?.actionType === 'set-metadata' ||
-      item?.actionType === 'copy-metadata'      || item?.actionType === 'http-request'  ||
-      item?.actionType === 'custom-script' ? item.actionType : 'increment-revision',
+        item?.actionType === 'copy-metadata' || item?.actionType === 'http-request' ||
+        item?.actionType === 'custom-script' ? item.actionType : 'increment-revision',
     auditNote: typeof item?.auditNote === 'string' ? item.auditNote : undefined,
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
   }
@@ -733,12 +755,12 @@ function normalizeSystemTaskConfig(item: any): SystemTaskConfig {
 function normalizeMessageEventConfig(item: any): MessageEventConfig {
   return {
     notificationTemplateIds: toStringArray(item?.notificationTemplateIds),
-    recipientUserIds:  toStringArray(item?.recipientUserIds),
+    recipientUserIds: toStringArray(item?.recipientUserIds),
     recipientGroupIds: toStringArray(item?.recipientGroupIds),
-    recipientRoleIds:  toStringArray(item?.recipientRoleIds),
+    recipientRoleIds: toStringArray(item?.recipientRoleIds),
     triggerMode:
       item?.triggerMode === 'on-enter' || item?.triggerMode === 'on-exit' ||
-      item?.triggerMode === 'manual' ? item.triggerMode : 'on-enter',
+        item?.triggerMode === 'manual' ? item.triggerMode : 'on-enter',
     auditNote: typeof item?.auditNote === 'string' ? item.auditNote : undefined,
   }
 }
@@ -747,28 +769,28 @@ function normalizeTimerEventConfig(item: any): TimerEventConfig {
   return {
     timerType:
       item?.timerType === 'fixed-delay' || item?.timerType === 'fixed-date' ||
-      item?.timerType === 'metadata-date' ? item.timerType : 'fixed-delay',
+        item?.timerType === 'metadata-date' ? item.timerType : 'fixed-delay',
     delayUnit:
       item?.delayUnit === 'minutes' || item?.delayUnit === 'hours' ||
-      item?.delayUnit === 'days' ? item.delayUnit : 'days',
-    delayValue:             typeof item?.delayValue             === 'number' ? item.delayValue             : undefined,
-    fixedDate:              typeof item?.fixedDate              === 'string' ? item.fixedDate              : undefined,
-    metadataDefinitionId:   typeof item?.metadataDefinitionId   === 'string' ? item.metadataDefinitionId   : undefined,
-    metadataOffsetDays:     typeof item?.metadataOffsetDays     === 'number' ? item.metadataOffsetDays     : undefined,
-    auditNote:              typeof item?.auditNote              === 'string' ? item.auditNote              : undefined,
+        item?.delayUnit === 'days' ? item.delayUnit : 'days',
+    delayValue: typeof item?.delayValue === 'number' ? item.delayValue : undefined,
+    fixedDate: typeof item?.fixedDate === 'string' ? item.fixedDate : undefined,
+    metadataDefinitionId: typeof item?.metadataDefinitionId === 'string' ? item.metadataDefinitionId : undefined,
+    metadataOffsetDays: typeof item?.metadataOffsetDays === 'number' ? item.metadataOffsetDays : undefined,
+    auditNote: typeof item?.auditNote === 'string' ? item.auditNote : undefined,
   }
 }
 
 function normalizeSignalEventConfig(item: any): SignalEventConfig {
   return {
-    targetProcessId:   typeof item?.targetProcessId   === 'string' ? item.targetProcessId   : '',
+    targetProcessId: typeof item?.targetProcessId === 'string' ? item.targetProcessId : '',
     targetProcessName: typeof item?.targetProcessName === 'string' ? item.targetProcessName : undefined,
     relationDirection:
       item?.relationDirection === 'parent-to-child' || item?.relationDirection === 'child-to-parent'
         ? item.relationDirection : 'parent-to-child',
-    targetAction:      typeof item?.targetAction      === 'string' ? item.targetAction      : '',
+    targetAction: typeof item?.targetAction === 'string' ? item.targetAction : '',
     targetActionLabel: typeof item?.targetActionLabel === 'string' ? item.targetActionLabel : undefined,
-    auditNote:         typeof item?.auditNote         === 'string' ? item.auditNote         : undefined,
+    auditNote: typeof item?.auditNote === 'string' ? item.auditNote : undefined,
   }
 }
 
@@ -784,10 +806,10 @@ function normalizeConditionalEventConfig(item: any): ConditionalEventConfig {
 
 function normalizeElementKind(kind: unknown, elementType?: string): WorkflowElementKind {
   if (
-    kind === 'start'       || kind === 'activity'    || kind === 'gateway'  ||
-    kind === 'flow'        || kind === 'end'          || kind === 'notification' ||
-    kind === 'system-task' || kind === 'message'      || kind === 'timer'    ||
-    kind === 'signal'      || kind === 'conditional'
+    kind === 'start' || kind === 'activity' || kind === 'gateway' ||
+    kind === 'flow' || kind === 'end' || kind === 'notification' ||
+    kind === 'system-task' || kind === 'message' || kind === 'timer' ||
+    kind === 'signal' || kind === 'conditional'
   ) {
     return kind as WorkflowElementKind
   }
@@ -807,7 +829,7 @@ function normalizeWorkflowElementConfig(
   fallbackScope?: Partial<WorkflowScopedBase>,
 ): WorkflowElementConfig {
   const scoped = normalizeScopedBase(item, fallbackScope)
-  const kind   = normalizeElementKind(item?.kind, item?.elementType)
+  const kind = normalizeElementKind(item?.kind, item?.elementType)
   const rawConfig = item?.config ?? {}
 
   let config: WorkflowElementConfig['config']
@@ -851,9 +873,9 @@ function normalizeWorkflowElementConfig(
 
   return {
     ...scoped,
-    id:          String(item?.id ?? crypto.randomUUID()),
-    workflowId:  String(item?.workflowId  ?? ''),
-    elementId:   String(item?.elementId   ?? ''),
+    id: String(item?.id ?? crypto.randomUUID()),
+    workflowId: String(item?.workflowId ?? ''),
+    elementId: String(item?.elementId ?? ''),
     elementType: String(item?.elementType ?? ''),
     elementName: typeof item?.elementName === 'string' ? item.elementName : undefined,
     kind,
@@ -867,14 +889,14 @@ function normalizeWorkflowActivityConfig(
   item: any,
   fallbackScope?: Partial<WorkflowScopedBase>,
 ): WorkflowActivityConfig {
-  const scoped           = normalizeScopedBase(item, fallbackScope)
+  const scoped = normalizeScopedBase(item, fallbackScope)
   const normalizedConfig = normalizeActivityConfigValue(item)
 
   return {
     ...scoped,
-    id:          String(item?.id          ?? crypto.randomUUID()),
-    workflowId:  String(item?.workflowId  ?? ''),
-    elementId:   String(item?.elementId   ?? ''),
+    id: String(item?.id ?? crypto.randomUUID()),
+    workflowId: String(item?.workflowId ?? ''),
+    elementId: String(item?.elementId ?? ''),
     elementType: String(item?.elementType ?? ''),
     elementName: typeof item?.elementName === 'string' ? item.elementName : undefined,
     ...normalizedConfig,
@@ -918,7 +940,7 @@ function dedupeElementConfigs(items: WorkflowElementConfig[]): WorkflowElementCo
   const map = new Map<string, WorkflowElementConfig>()
   items.forEach((item) => {
     const fallbackScope = getWorkflowScopeFallback(item.workflowId)
-    const normalized    = normalizeWorkflowElementConfig(item, fallbackScope)
+    const normalized = normalizeWorkflowElementConfig(item, fallbackScope)
     const key = `${normalized.workflowId}::${normalized.elementId}`
     map.set(key, normalized)
   })
@@ -926,24 +948,24 @@ function dedupeElementConfigs(items: WorkflowElementConfig[]): WorkflowElementCo
 }
 
 function normalizeSnapshot(item: any): WorkflowVersionSnapshot {
-  const workflow   = normalizeWorkflow(item?.workflow ?? {})
-  const scoped     = normalizeScopedBase(item, workflow)
+  const workflow = normalizeWorkflow(item?.workflow ?? {})
+  const scoped = normalizeScopedBase(item, workflow)
   const elementConfigs = Array.isArray(item?.elementConfigs)
     ? item.elementConfigs.map((config: any) => normalizeWorkflowElementConfig(config, workflow))
     : Array.isArray(item?.activityConfigs)
       ? item.activityConfigs
-          .map((config: any) => normalizeWorkflowActivityConfig(config, workflow))
-          .map(activityConfigToElementConfig)
+        .map((config: any) => normalizeWorkflowActivityConfig(config, workflow))
+        .map(activityConfigToElementConfig)
       : []
 
   return {
     ...scoped,
-    id:           String(item?.id ?? crypto.randomUUID()),
-    workflowId:   String(item?.workflowId ?? workflow.id ?? ''),
+    id: String(item?.id ?? crypto.randomUUID()),
+    workflowId: String(item?.workflowId ?? workflow.id ?? ''),
     versionLabel:
       typeof item?.versionLabel === 'string' && item.versionLabel.trim()
         ? item.versionLabel : 'Snapshot',
-    note:         typeof item?.note === 'string' ? item.note : undefined,
+    note: typeof item?.note === 'string' ? item.note : undefined,
     workflow,
     elementConfigs: dedupeElementConfigs(elementConfigs),
     createdAt: typeof item?.createdAt === 'string' ? item.createdAt : new Date().toISOString(),
@@ -984,7 +1006,7 @@ export function listWorkflowsByScope(
       if (statuses && !statuses.includes(item.status)) return false
       if (options?.documentTypeId && item.documentTypeId !== options.documentTypeId) return false
       if (includeInherited) return matchesScope(item, context)
-      if (context.processId)     return item.scopeLevel === 'process'     && item.processId     === context.processId
+      if (context.processId) return item.scopeLevel === 'process' && item.processId === context.processId
       if (context.environmentId) return item.scopeLevel === 'environment' && item.environmentId === context.environmentId
       return item.scopeLevel === 'account'
     })
@@ -1010,8 +1032,8 @@ export function getBestWorkflowMatch(
 
 export function upsertWorkflow(workflow: WorkflowDefinition) {
   const current = loadWorkflows()
-  const index   = current.findIndex((item) => item.id === workflow.id)
-  const now     = new Date().toISOString()
+  const index = current.findIndex((item) => item.id === workflow.id)
+  const now = new Date().toISOString()
   const nextWorkflow = normalizeWorkflow({
     ...workflow, updatedAt: now, tenantId: workflow.tenantId ?? workflow.accountId,
   })
@@ -1026,7 +1048,7 @@ export function createWorkflowDraft(input: {
   name: string; description?: string; version?: string; status?: WorkflowStatus
   documentTypeId?: string; documentTypeName?: string
 }) {
-  const now        = new Date().toISOString()
+  const now = new Date().toISOString()
   const scopeLevel = normalizeScopeLevel(input.scopeLevel, input.environmentId ?? null, input.processId ?? null)
   return normalizeWorkflow({
     id: crypto.randomUUID(), accountId: input.accountId, accountName: input.accountName,
@@ -1083,19 +1105,19 @@ export function getElementConfig(workflowId: string, elementId: string) {
 }
 
 export function upsertElementConfig(values: Omit<WorkflowElementConfig, 'id' | 'createdAt' | 'updatedAt'>) {
-  const current      = loadWorkflowElementConfigs()
-  const index        = current.findIndex((item) => item.workflowId === values.workflowId && item.elementId === values.elementId)
+  const current = loadWorkflowElementConfigs()
+  const index = current.findIndex((item) => item.workflowId === values.workflowId && item.elementId === values.elementId)
   const fallbackScope = getWorkflowScopeFallback(values.workflowId)
-  const now          = new Date().toISOString()
+  const now = new Date().toISOString()
 
   const nextItem: WorkflowElementConfig = normalizeWorkflowElementConfig(
     index >= 0
       ? { ...current[index], ...values, updatedAt: now }
       : {
-          ...fallbackScope, ...values,
-          tenantId: values.tenantId ?? values.accountId ?? fallbackScope?.accountId,
-          id: crypto.randomUUID(), createdAt: now, updatedAt: now,
-        },
+        ...fallbackScope, ...values,
+        tenantId: values.tenantId ?? values.accountId ?? fallbackScope?.accountId,
+        id: crypto.randomUUID(), createdAt: now, updatedAt: now,
+      },
     fallbackScope,
   )
 
@@ -1106,8 +1128,8 @@ export function upsertElementConfig(values: Omit<WorkflowElementConfig, 'id' | '
 }
 
 export function removeMissingElementConfigs(workflowId: string, validElementIds: string[]) {
-  const validIdsSet  = new Set(validElementIds)
-  const nextConfigs  = loadWorkflowElementConfigs().filter(
+  const validIdsSet = new Set(validElementIds)
+  const nextConfigs = loadWorkflowElementConfigs().filter(
     (item) => item.workflowId !== workflowId || validIdsSet.has(item.elementId),
   )
   saveWorkflowElementConfigs(nextConfigs)
@@ -1139,10 +1161,10 @@ export function getActivityConfig(workflowId: string, elementId: string) {
 
 export function upsertActivityConfig(input: Omit<WorkflowActivityConfig, 'id' | 'createdAt' | 'updatedAt'>) {
   const fallbackScope = getWorkflowScopeFallback(input.workflowId)
-  const normalized    = normalizeWorkflowActivityConfig({
+  const normalized = normalizeWorkflowActivityConfig({
     ...fallbackScope, ...input,
-    tenantId:  input.tenantId ?? input.accountId ?? fallbackScope?.accountId,
-    id:        crypto.randomUUID(),
+    tenantId: input.tenantId ?? input.accountId ?? fallbackScope?.accountId,
+    id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }, fallbackScope)
@@ -1190,8 +1212,8 @@ export function createWorkflowSnapshot(input: {
   const normalizedElementConfigs = input.elementConfigs
     ? input.elementConfigs.map((item) => normalizeWorkflowElementConfig(item, input.workflow))
     : (input.activityConfigs ?? [])
-        .map((item) => normalizeWorkflowActivityConfig(item, input.workflow))
-        .map(activityConfigToElementConfig)
+      .map((item) => normalizeWorkflowActivityConfig(item, input.workflow))
+      .map(activityConfigToElementConfig)
 
   const snapshot = normalizeSnapshot({
     id: crypto.randomUUID(), accountId: input.workflow.accountId,
